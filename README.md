@@ -3,6 +3,13 @@
 零售商与代理/集成商的渠道开发看板，单文件离线 HTML + Streamlit 外壳。
 数据源：`北美渠道客户整理 (6).xlsx`（零售商 65 家 / 代理集成商 60 家 / 竞品格局 47 条）。
 
+## 访问地址
+
+| 方式 | 地址 | 说明 |
+|---|---|---|
+| **GitHub Pages**（推荐） | https://cyanix-dewight.github.io/north-america-channel-board/ | 静态直开、满屏显示，打开即用 |
+| Streamlit | 部署后为 `https://<app-name>.streamlit.app` | 需要在 share.streamlit.io 手动创建（见下文） |
+
 ## 页面结构
 
 | 页签 | 内容 |
@@ -24,8 +31,12 @@
 app.py                  Streamlit 入口（嵌入 dashboard/index.html）
 requirements.txt        依赖
 .streamlit/config.toml  主题与服务器配置
-dashboard/index.html    看板本体（自包含，无外链）
+dashboard/index.html    看板本体（Streamlit 读取的副本）
+docs/index.html         看板本体（GitHub Pages 托管的页面）
+docs/.nojekyll          让 Pages 跳过 Jekyll 处理
 ```
+
+两份 HTML 内容完全一致，`publish.py` 会同时更新，避免改了一边忘了另一边。
 
 ## 本地运行
 
@@ -36,7 +47,9 @@ streamlit run app.py
 
 打开 http://localhost:8501 ，如需调整嵌入高度：`http://localhost:8501/?h=1300`。
 
-## 部署到 Streamlit Community Cloud
+## 部署到 Streamlit Community Cloud（可选）
+
+GitHub Pages 已经能直接访问，如果还想要 Streamlit 入口：
 
 1. 打开 https://share.streamlit.io ，用 GitHub 账号登录并授权。
 2. 点 **Create app** → **Deploy a public app from GitHub**。
@@ -50,10 +63,13 @@ streamlit run app.py
 
 ```bash
 python build_v5.py       # 生成 北美渠道总看板.html
-python publish.py        # 复制到 deploy/dashboard/index.html
+python publish.py        # 同步到 dashboard/index.html 与 docs/index.html
+cd deploy && git add -A && git commit -m "update dashboard" && git push
 ```
 
-然后把 `deploy/` 的内容推到本仓库（网页上传或 `git push`），Streamlit Cloud 检测到提交会自动重新部署。
+推送后 GitHub Pages 会在 30–60 秒内自动重建；Streamlit 若已创建则同步重新部署。
+
+GitHub Pages 的站点源配置在仓库 **Settings → Pages**（Source: `main` 分支的 `/docs` 目录），一般不需要再动。
 
 ## 注意
 

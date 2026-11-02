@@ -420,7 +420,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-02 16:21</div>
+      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-02 18:19</div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -2409,7 +2409,11 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   }
 
   function bindView(box) {
-    $$('tr[data-id]', box).forEach((tr) => tr.addEventListener('click', () => openDrawer(tr.dataset.id)));
+    $$('tr[data-id]', box).forEach((tr) => tr.addEventListener('click', (e) => {
+      // 行内可编辑控件（开发跟进页）不该触发行点击 → 抽屉弹出
+      if (e.target.closest && e.target.closest('input, select, textarea, button, a, label, option')) return;
+      openDrawer(tr.dataset.id);
+    }));
     $$('.chip[data-id]', box).forEach((ch) => ch.addEventListener('click', () => openDrawer(ch.dataset.id)));
     $$('th[data-sort]', box).forEach((th) => th.addEventListener('click', () => {
       const k = th.dataset.sort;
@@ -3255,6 +3259,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   function bindView(box, rerender) {
     // 输入：失焦即存；阶段类改动重绘（影响分布图）
     $$('.pin', box).forEach((n) => {
+      // 阻止冒泡：否则点击单元格会触发 tr 的行点击，把客户详情抽屉弹出来
+      ['click', 'mousedown', 'focus'].forEach((ev) => n.addEventListener(ev, (e) => e.stopPropagation()));
       n.addEventListener('change', () => {
         const c = findById(n.dataset.id);
         if (!c) return;

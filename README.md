@@ -5,10 +5,15 @@
 
 ## 访问地址
 
-| 方式 | 地址 | 说明 |
+| 方式 | 地址 | 能否多人同步 |
 |---|---|---|
-| **GitHub Pages**（推荐） | https://cyanix-dewight.github.io/north-america-channel-board/ | 静态直开、满屏显示，打开即用 |
-| Streamlit | 部署后为 `https://<app-name>.streamlit.app` | 需要在 share.streamlit.io 手动创建（见下文） |
+| **共享版**（推荐） | https://na-channel-board-91303.app.workbuddy.host/?sharecode=FRAIEZBXGM | **能**。云端只对这个域名开放 |
+| GitHub Pages（只读备份） | https://cyanix-dewight.github.io/north-america-channel-board/ | 不能，页面会提示「此网址不同步 · 去共享版」 |
+| Streamlit | 部署后为 `https://<app-name>.streamlit.app` | 不能，同上 |
+
+**为什么只有共享版能同步**：云端服务做「精确来源匹配」（exact Origin match）。来自未登记域名的请求会被直接返回 `403 access_denied: the request origin is not allowed for this client`，而且浏览器读不到这个响应体，只会表现为「连不上」。所以看板在打开时会先本地比对当前域名，域名不对就直接降级为本机模式并给出跳转链接，不让人对着一个永远连不上的地址排查。
+
+⚠️ 如果以后重新创建云服务应用，`applicationId` 会变，endpoint 与白名单域名也会跟着变，此时必须同步更新 `build_v5.py` 里的 `CLOUD` 配置并重新发布，否则同步会失效。
 
 ## 页面结构
 
@@ -63,7 +68,10 @@ GitHub Pages 已经能直接访问，如果还想要 Streamlit 入口：
 
 ```bash
 python build_v5.py       # 生成 北美渠道总看板.html
-python publish.py        # 同步到 dashboard/index.html 与 docs/index.html
+python publish.py        # 同步到 site/、dashboard/、docs/ 三份副本
+# 1) 共享版（能同步）
+#    workbuddy_sites_deploy → directory=site, appId=wbapp_AGkoQ4nhcy53ZjRenRni7X
+# 2) 静态备份
 cd deploy && git add -A && git commit -m "update dashboard" && git push
 ```
 
@@ -73,7 +81,7 @@ GitHub Pages 的站点源配置在仓库 **Settings → Pages**（Source: `main`
 
 ## 多人协作填写（开发跟进页）
 
-跟进记录已经不是「各存各的」了。通过网址打开时：
+跟进记录已经不是「各存各的」了。**用共享版网址**打开时：
 
 - 右上角有 **填写人** 输入框，填一次会记在这台浏览器上，之后每次提交都会带上你的名字（鼠标悬停行可看到「最近更新」）。
 - 卡片右上角的状态角标：**云端已同步 18:37** 表示正常；**云端未连接 · 已存本机** 表示网络或服务异常，改动先存本地并自动重试。
@@ -81,7 +89,7 @@ GitHub Pages 的站点源配置在仓库 **Settings → Pages**（Source: `main`
 - **按字段保存**：两个人同时改同一家的不同列不会互相覆盖；改同一列以最后一次提交为准。
 - 写入失败会做 3 次短退避重试，仍失败则入队，每 2.5 秒再试；改动没写进云端就关页面，浏览器会弹出确认提示。
 
-**注意**：直接用 `file://` 双击本地 HTML 打开时，不会联网，角标显示「本机记录」，行为与旧版本一致（数据只在这台电脑）。要协作必须走网址。
+**注意**：直接用 `file://` 双击本地 HTML 打开时，不会联网，角标显示「本机记录」；用 GitHub Pages / Streamlit 等未登记域名打开时，角标显示「此网址不同步 · 去共享版」，点一下就能跳到能同步的地址。要协作必须用共享版链接。
 
 数据存在云端表 `pipe_records`（WorkBuddy 云服务，`wbapp_AGkoQ4nhcy53ZjRenRni7X`），主键是 `客户类型|客户名`，所以 Excel 行序调整不会错位。云端表**不开放删除**：页面上的「清空记录」只清当前浏览器缓存，不会删掉同事填的内容。
 

@@ -420,7 +420,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-02 18:26</div>
+      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-02 18:32</div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -3144,16 +3144,37 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   }
   const ck = (c) => c.type + '|' + String(c.name).replace(/\s+/g, '');
   function rec(c) { return DB[ck(c)] || {}; }
+
+  /* 本地字段写入。_pend 记录「已改但还没确认写进云端」的字段：
+     合并云端数据时这些字段以本地为准，其余字段一律采纳云端值 —— 不依赖任何一端的系统时钟。 */
   function put(c, k, v, opt) {
     const key = ck(c);
     const o = DB[key] || {};
+    const remote = !!(opt && opt.remote);
     if (v === '' || v == null) delete o[k]; else o[k] = v;
     if (!Object.keys(o).length) delete DB[key];
-    else { o.updated = today(); o._ts = Date.now(); DB[key] = o; }
+    else {
+      o.updated = today();
+      if (!remote) { o._pend = o._pend || {}; o._pend[k] = 1; }
+      DB[key] = o;
+    }
     save();
-    // 云端模式：写回共享表（opt.remote 为真时不回写，避免回灌）
-    if (!(opt && opt.remote) && W.SYNC && W.SYNC.push) W.SYNC.push(c, k, v);
+    if (!remote && cloudOn() && W.SYNC && W.SYNC.push) W.SYNC.push(c, k, v);
   }
+
+  /* 云端确认写入成功后调用，解除该字段的待同步标记 */
+  function markSynced(id, field) {
+    const o = DB[id];
+    if (!o || !o._pend) return;
+    delete o._pend[field];
+    if (!Object.keys(o._pend).length) delete o._pend;
+    save();
+  }
+  function pendOf(c) {
+    const p = rec(c)._pend || {};
+    return Object.keys(p);
+  }
+
   function touched(c) {
     const r = rec(c);
     return STAGES.some((s) => s === r.stage) || !!(r.owner || r.next || r.planDate || r.lastDate || r.difficulty || r.direction || r.verify);
@@ -3299,7 +3320,20 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         style="width:86px;height:24px;padding:0 6px;border:1px solid #DDE3EC;border-radius:6px;background:#fff;font-size:12px;color:var(--ink)"></label>`;
   }
 
-  /* 把云端行合并进本地缓存；首次接通时把仅存在本机的记录推上去 */
+  /* 把云端行合并进本地缓存。
+     规则：服务器行是「已确认的事实」，除了本机仍标记为待同步(_pend)的字段外，
+     一律以服务器为准 —— 因此任何一台机器时钟不准都不会导致收不到别人的更新。 */
+  function sameRec(a, b) {
+    const ka = Object.keys(a).filter((k) => k !== '_ts').sort();
+    const kb = Object.keys(b).filter((k) => k !== '_ts').sort();
+    if (ka.join() !== kb.join()) return false;
+    return ka.every((k) => {
+      const x = a[k], y = b[k];
+      if (k === '_pend') return JSON.stringify(x) === JSON.stringify(y);
+      return String(x) === String(y);
+    });
+  }
+
   function applyRemote(rows) {
     let changed = false;
     const remoteIds = {};
@@ -3307,18 +3341,37 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       if (!r || !r.id) return;
       remoteIds[r.id] = true;
       const local = DB[r.id] || {};
-      const rts = r.updated_at ? Date.parse(r.updated_at) : 0;
-      const lts = local._ts || 0;
-      if (rts > lts) {
-        const nr = { _ts: rts, updated: String(r.updated_at || '').slice(0, 10) };
-        if (r.updated_by) nr.by = r.updated_by;
-        Object.keys(BACK).forEach((col) => {
-          const v = r[col];
-          if (v) nr[BACK[col]] = v;
-        });
-        DB[r.id] = nr;
-        changed = true;
+      const pend = local._pend || {};
+      const nr = {};
+      if (local.updated) nr.updated = local.updated;
+      if (local.by) nr.by = local.by;
+
+      Object.keys(BACK).forEach((col) => {
+        const lk = BACK[col];
+        if (pend[lk]) {                       // 本机改动还没确认落库 → 保留本机值
+          if (local[lk] != null) nr[lk] = local[lk];
+          return;
+        }
+        const v = r[col];
+        if (v) nr[lk] = v;
+      });
+
+      if (Object.keys(pend).length) nr._pend = pend;
+      if (r.updated_at) {
+        nr._ts = Date.parse(r.updated_at) || 0;
+        nr.updated = String(r.updated_at).slice(0, 10);
       }
+      if (r.updated_by) nr.by = r.updated_by;
+
+      // 云端行完全没有内容且本机也没有待同步字段 → 清掉空壳
+      const hasData = ['stage', 'next', 'owner', 'planDate', 'lastDate', 'difficulty', 'direction', 'verify']
+        .some((k) => nr[k]);
+
+      if (!hasData && !Object.keys(pend).length) {
+        if (DB[r.id]) { delete DB[r.id]; changed = true; }
+        return;
+      }
+      if (!sameRec(local, nr)) { DB[r.id] = nr; changed = true; }
     });
 
     if (firstPull) {
@@ -3326,13 +3379,13 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       const cmap = {};
       (W.APP.customers || []).forEach((c) => (cmap[ck(c)] = c));
       Object.keys(DB).slice().forEach((id) => {
-        if (remoteIds[id]) return;
         const r = DB[id] || {};
         const c = cmap[id];
         if (!c) return;
+        // 上次没写成功的字段（含整个客户只在本地存在的情况）在这里补推
         Object.keys(BACK).forEach((col) => {
           const lk = BACK[col];
-          if (r[lk]) W.SYNC.push(c, lk, r[lk]);
+          if (r[lk] && (r._pend && r._pend[lk] || !remoteIds[id])) W.SYNC.push(c, lk, r[lk]);
         });
       });
     }
@@ -3494,7 +3547,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   W.PIPE_VIEW = viewPipe;
   W.PIPE_BIND = bindView;
-  W.PIPE = { DB: () => DB, STAGES, rec, ck, touched, applyRemote, cloudOn, today };
+  W.PIPE = { DB: () => DB, STAGES, rec, ck, touched, applyRemote, cloudOn, today, markSynced, pendOf };
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <script>window.__CLOUD__ = {"endpoint":"https://na-channel-board-91303.app.workbuddy.host","publishableKey":"wbpk_AGkoQ4nhcy53ZjRenRni7X_MrmGdXs3sKRsZOi74hfM3tFJznieAyiW","pollMs":6000};</script>
@@ -3538,6 +3591,7 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
       status: () => 'local',
       lastErr: () => '',
       lastAt: () => null,
+      pending: () => 0,
       subscribe(fn) { try { fn('local', '', null); } catch (e) {} },
       enabled: false,
     };
@@ -3627,40 +3681,68 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
   }
 
   /* ---------------- 写回（单字段 upsert） ---------------- */
+  function markOk(id, field) {
+    if (W.PIPE && W.PIPE.markSynced) W.PIPE.markSynced(id, field);
+  }
+
+  async function once(row, col) {
+    const r = await cloud.database.from(TABLE).upsert(row, { onConflict: 'id' });
+    if (r.error) throw r.error;
+    return true;
+  }
+
   async function push(c, field, value) {
     if (!ready || !cloud) return;
     const col = COLS[field];
     if (!col || !W.PIPE || !W.PIPE.ck) return;
 
     const id = W.PIPE.ck(c);
-    const nowIso = new Date().toISOString();
-    const row = { id, ctype: c.type, customer: c.name, updated_at: nowIso };
+    const row = { id, ctype: c.type, customer: c.name, updated_at: new Date().toISOString() };
     row[col] = value === '' || value == null ? null : value;
     const me = readWho();
     if (me) row.updated_by = me;
 
-    try {
-      let r = await cloud.database.from(TABLE).upsert(row, { onConflict: 'id' });
-      if (r.error) throw r.error;
-      setStatus('online');
-    } catch (e) {
-      setStatus('offline', (e && (e.message || e.code)) || '保存失败');
-      if (W.__toast) W.__toast('云端保存失败，已存在本机，恢复后自动重试');
-      if (!queue.some((q) => q.id === id && q.col === col)) queue.push({ id, col, row });
+    // 首次失败大概率是并发建行的瞬时冲突，短退避重试两次再入队
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await once(row, col);
+        markOk(id, field);
+        setStatus('online');
+        return;
+      } catch (e) {
+        var last = e;
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 350 * (attempt + 1) * (attempt + 1)));
+      }
     }
+
+    setStatus('offline', (last && (last.message || last.code)) || '保存失败');
+    if (W.__toast) W.__toast('云端保存失败，已存在本机，联网后自动重试');
+    if (!queue.some((q) => q.id === id && q.col === col)) queue.push({ id, field, col, row });
+    scheduleFlush();
+  }
+
+  let retryTimer = null;
+  function scheduleFlush() {
+    if (retryTimer || !queue.length) return;
+    retryTimer = setTimeout(async () => {
+      retryTimer = null;
+      await flush();
+      if (queue.length) scheduleFlush();
+    }, 2500);
   }
 
   async function flush() {
-    if (!ready || !cloud) return;
+    if (!ready || !cloud || !queue.length) return;
     const items = queue.splice(0, queue.length);
     for (const it of items) {
       try {
-        const r = await cloud.database.from(TABLE).upsert(it.row, { onConflict: 'id' });
-        if (r.error) throw r.error;
+        await once(it.row, it.col);
+        markOk(it.id, it.field);
         setStatus('online');
       } catch (e) {
         queue.push(it);
         setStatus('offline', (e && (e.message || e.code)) || '重试失败');
+        scheduleFlush();
         return;
       }
     }
@@ -3675,9 +3757,17 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     status: () => status,
     lastErr: () => lastErr,
     lastAt: () => lastAt,
+    pending: () => queue.length,
     subscribe(fn) { subs.push(fn); try { fn(status, lastErr, lastAt); } catch (e) {} },
     enabled: true,
   };
+
+  // 还有没写成功的改动就关页面 → 提醒一下，避免误以为已同步
+  window.addEventListener('beforeunload', (e) => {
+    if (!queue.length) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
 
   boot();
 })(typeof window !== 'undefined' ? window : globalThis);

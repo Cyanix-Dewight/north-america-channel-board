@@ -420,7 +420,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-03 11:19</div>
+      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-03 11:41</div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -3427,6 +3427,22 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
   }
 
+  /* 客户名下方那一行：渠道角色 · 国家 · 主推
+     代理侧直接显示「分销商 / 代理·集成商」等角色，替代原来的表类型「代理 / 集成商」——
+     后者与本表的角色分类语义冲突（会出现「代理 / 集成商 · 分销商」这种自相矛盾的写法）。 */
+  const ROLE_MINI = {
+    分销商: '分销商',
+    厂方代表: '代理 · 厂方代表',
+    'VAR · 直销': '代理 · VAR',
+    集成商: '代理 · 集成商',
+  };
+  function roleMini(c) {
+    if (!c.role) return esc(c.typeLabel);
+    const tone = c.role.bin === '分销商' ? '#0E7490' : '#3B6FD4';
+    const label = ROLE_MINI[c.role.sub] || c.role.sub;
+    return `<span style="color:${tone}" title="渠道角色（依据简介原句）：${esc(c.role.why)}">${esc(label)}</span>`;
+  }
+
   /* ---------- 视图 ---------- */
   function viewPipe(list) {
     const t0 = today(), t7 = addDays(7);
@@ -3452,7 +3468,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       const late = r.planDate && r.planDate < t0 && CLOSED.indexOf(r.stage) < 0;
       const opt = (arr, cur) => ['<option value="">未填写</option>'].concat(arr.map((s) => `<option value="${esc(s)}"${cur === s ? ' selected' : ''}>${esc(s)}</option>`)).join('');
       return `<tr data-id="${c.id}" class="${late ? 'late' : ''}"${r.by ? ` title="最近更新：${esc(r.by)}${r.updated ? ' · ' + esc(r.updated) : ''}"` : ''}>
-        <td><div class="tname">${esc(c.name)}</div><div class="mini">${esc(c.typeLabel)} · ${c.country === 'US' ? '美国' : '加拿大'}${(() => { const a = c.advice; return a && a.items && a.items.length ? ' · 主推 ' + a.items.map((i) => i.key).join('/') : ''; })()}</div></td>
+        <td><div class="tname">${esc(c.name)}</div><div class="mini">${roleMini(c)} · ${c.country === 'US' ? '美国' : '加拿大'}${(() => { const a = c.advice; return a && a.items && a.items.length ? ' · 主推 ' + a.items.map((i) => i.key).join('/') : ''; })()}</div></td>
         <td>${UI.pChip(c, false)}</td>
         <td>${c.mny ? moneyRangeShort(c.mny.low, c.mny.high) : '<span class="mini muted">未量化</span>'}</td>
         <td><select class="pin" data-id="${c.id}" data-f="stage">${opt(STAGES, r.stage || '')}</select></td>
@@ -3716,7 +3732,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   }
 
   /* ---------- CSV ---------- */
-  const HEAD = ['类型', '客户名', '优先级', '国家', '综合体量下限USD', '综合体量上限USD', '当前阶段', '下一步行动', '负责人', '计划跟进', '最近跟进', '开发难点', '预期合作方向', '数据核实', '最近更新'];
+  const HEAD = ['类型', '渠道角色', '细分角色', '客户名', '优先级', '国家', '综合体量下限USD', '综合体量上限USD', '当前阶段', '下一步行动', '负责人', '计划跟进', '最近跟进', '开发难点', '预期合作方向', '数据核实', '最近更新'];
   function csvCell(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
 
   function exportCSV() {
@@ -3725,7 +3741,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     list.forEach((c) => {
       const r = rec(c);
       lines.push([
-        c.typeLabel, c.name, c.p || '', c.country,
+        c.typeLabel, c.role ? c.role.bin : '', c.role ? c.role.sub : '', c.name, c.p || '', c.country,
         c.mny ? Math.round(c.mny.low) : '', c.mny ? Math.round(c.mny.high) : '',
         r.stage || '', r.next || '', r.owner || '', r.planDate || '', r.lastDate || '',
         r.difficulty || '', r.direction || '', r.verify || '', r.updated || '',

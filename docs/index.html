@@ -444,7 +444,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-03 16:21</div>
+      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-03 16:32</div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -3409,7 +3409,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
 /* ============================================================
    pipe.js — 客户开发与跟进（可编辑记录表）
-   - 字段：阶段 / 下一步行动 / 已完成动作 / 负责人 / 计划跟进 / 最近跟进 /
+   - 字段：阶段 / 已完成动作 / 下一步行动 / 负责人 / 计划跟进 / 最近跟进 /
      开发难点 / 预期合作方向 / 数据核实
    - 默认全部留空，不代填任何日期或结论
    - 记录仅存本机浏览器（localStorage），不写回 Excel；可导出 / 导入 CSV
@@ -3553,8 +3553,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <td>${UI.pChip(c, false)}</td>
         <td>${c.mny ? moneyRangeShort(c.mny.low, c.mny.high) : '<span class="mini muted">未量化</span>'}</td>
         <td><select class="pin" data-id="${c.id}" data-f="stage">${opt(STAGES, r.stage || '')}</select></td>
-        <td><input class="pin" data-id="${c.id}" data-f="next" value="${esc(r.next || '')}" placeholder="下一步做什么"></td>
         <td><input class="pin" data-id="${c.id}" data-f="done" value="${esc(r.done || '')}" placeholder="已完成什么" title="已完成动作：这一轮实际做掉的事，便于交接与复盘"></td>
+        <td><input class="pin" data-id="${c.id}" data-f="next" value="${esc(r.next || '')}" placeholder="下一步做什么"></td>
         <td><input class="pin" data-id="${c.id}" data-f="owner" value="${esc(r.owner || '')}" placeholder="待指派" style="min-width:74px"></td>
         <td><input class="pin" type="date" data-id="${c.id}" data-f="planDate" value="${esc(r.planDate || '')}">
           ${late ? '<div class="mini" style="color:#B54708">逾期</div>' : ''}</td>
@@ -3597,8 +3597,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <div class="tablewrap" style="max-height:calc(100vh - 330px)"><table class="dt pipe">
           <thead><tr>
             <th style="min-width:190px">客户</th><th>P</th><th class="num">综合体量</th>
-            <th style="min-width:104px">当前阶段</th><th style="min-width:150px">下一步行动</th>
-            <th style="min-width:150px">已完成动作</th>
+            <th style="min-width:104px">当前阶段</th>
+            <th style="min-width:150px">已完成动作</th><th style="min-width:150px">下一步行动</th>
             <th style="min-width:84px">负责人</th><th style="min-width:120px">计划跟进</th><th style="min-width:120px">最近跟进</th>
             <th style="min-width:120px">开发难点</th><th style="min-width:120px">预期合作方向</th><th style="min-width:92px">数据核实</th>
           </tr></thead>
@@ -3838,7 +3838,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   }
 
   /* ---------- CSV ---------- */
-  const HEAD = ['类型', '渠道角色', '细分角色', '客户名', '优先级', '国家', '综合体量下限USD', '综合体量上限USD', '当前阶段', '下一步行动', '已完成动作', '负责人', '计划跟进', '最近跟进', '开发难点', '预期合作方向', '数据核实', '最近更新'];
+  const HEAD = ['类型', '渠道角色', '细分角色', '客户名', '优先级', '国家', '综合体量下限USD', '综合体量上限USD', '当前阶段', '已完成动作', '下一步行动', '负责人', '计划跟进', '最近跟进', '开发难点', '预期合作方向', '数据核实', '最近更新'];
   function csvCell(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
 
   function exportCSV() {
@@ -3849,7 +3849,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       lines.push([
         c.typeLabel, c.role ? c.role.bin : '', c.role ? c.role.sub : '', c.name, c.p || '', c.country,
         c.mny ? Math.round(c.mny.low) : '', c.mny ? Math.round(c.mny.high) : '',
-        r.stage || '', r.next || '', r.done || '', r.owner || '', r.planDate || '', r.lastDate || '',
+        r.stage || '', r.done || '', r.next || '', r.owner || '', r.planDate || '', r.lastDate || '',
         r.difficulty || '', r.direction || '', r.verify || '', r.updated || '',
       ].map(csvCell).join(','));
     });

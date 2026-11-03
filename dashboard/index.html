@@ -420,7 +420,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-02 19:06</div>
+      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-03 11:19</div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -434,6 +434,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 <button class="tab" data-view="scale">体量分析 <span class="n"></span></button>
 <button class="tab" data-view="competitor" data-profile="retailer">竞品与入驻预判</button>
 <button class="tab" data-view="judge" data-profile="agent">P 码判定与校准</button>
+<button class="tab" data-view="role" data-profile="agent">渠道角色 <span class="n"></span></button>
 <button class="tab" data-view="lines" data-profile="agent">产品线与竞品</button>
 <button class="tab" data-view="map">总部地图</button>
 <button class="tab" data-view="explorer">客户主表 <span class="n"></span></button>
@@ -467,6 +468,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   <section class="view" id="view-scale"></section>
   <section class="view" id="view-competitor"></section>
   <section class="view" id="view-judge"></section>
+  <section class="view" id="view-role"></section>
   <section class="view" id="view-lines"></section>
   <section class="view" id="view-map"></section>
   <section class="view" id="view-explorer"></section>
@@ -1272,6 +1274,117 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   }
 
   /* ============================================================
+     渠道角色：分销商 / 代理商
+     ------------------------------------------------------------
+     判定只看「一句话简介」的原文含义：
+       分销商 —— 向下一级渠道批量供货、备库存，自己不直接做终端项目
+       代理商 —— 面向终端客户或项目销售（含厂方代表、VAR·直销、系统集成商）
+     简介是营销措辞（例如 CDW、Insight 被写成「系统集成商」，实际是面向终端的
+     VAR 直销），纯关键词会误判，所以对当前 60 家逐家复核后钉一张定论表；
+     why 存判断依据的原句，方便随时核对。表里没有的新客户退化为关键词判断，
+     判不出来的老实标「待判断」，不硬凑。
+     ============================================================ */
+  const ROLE_SUB = {
+    dist: { sub: '分销商', bin: '分销商', color: 'teal' },
+    rep: { sub: '厂方代表', bin: '代理商', color: 'violet' },
+    var: { sub: 'VAR · 直销', bin: '代理商', color: 'blue' },
+    integ: { sub: '集成商', bin: '代理商', color: 'mid' },
+    unknown: { sub: '待判断', bin: '待判断', color: 'na' },
+  };
+
+  // 名称 → [角色, 依据原句]
+  const ROLE_FIX = {
+    // —— 向渠道供货的分销商 ——
+    'ADI Pro': ['dist', '「专业音响…增值分销商」'],
+    'A.C. Americas': ['dist', '「一级增值总代理商」且设美东分销枢纽'],
+    'Almo Pro AV': ['dist', '「一级全国性价值追加型总代理商」'],
+    'Ingram Micro': ['dist', '「一级跨国增值分销」'],
+    'TD SYNNEX': ['dist', '「全栈式技术分销与整合服务」'],
+    'Broadfield Distributing Inc.': ['dist', '「一级价值追加型专营总代理商」'],
+    'JB&A (Exertis Broadcast)': ['dist', '「一级价值追加型总代理商」'],
+    'Starin Marketing / Midwich US': ['dist', '「一级全国性价值追加型总代理商」'],
+    'TecNec Distributing': ['dist', '「一级批发分销与工程配件总代理商」'],
+    'Mobile Video Devices (MVD)': ['dist', '「一级分销代理商与品牌总代」'],
+    'JB&A Distribution': ['dist', '「增值分销总代理商」'],
+    'TMP Pro (The Music People)': ['dist', '「一级增值分销总代理商」'],
+    'National Source AV': ['dist', '「硬件增值总代理商」'],
+    'Varto Technologies': ['dist', '「系统集成总代理商、VAR 增值分销商」，以总代身份供货'],
+
+    // —— 厂方代表（替厂商做区域渠道，不备货）——
+    'Image Marketing West': ['rep', '「独立厂方代表机构…代理商」'],
+    'Livella Brand Group': ['rep', '「独立厂方代表机构…代理商」'],
+    'PAG Canada (KMT Pro)': ['rep', '「独立厂方代表与增值分销机构」，以厂方代表为主'],
+
+    // —— VAR / 直销（面向终端客户与机构，不备大库存）——
+    'Markertek': ['var', '「直销与 B2B 综合分销商」，以直销为主'],
+    'Dataworld': ['var', '「在线直销与硬件批发商」'],
+    'A5 IT': ['var', '「B2B 在线与机构级批货电商」'],
+    'Cloudtechmart (Jaguar LLC)': ['var', '「B2B 跨平台第三方卖家与电商铺货经销商」'],
+    'GoElectronic (GoElectronic.com)': ['var', '「垂直类直销电商与增值经销商」'],
+    'PC Nation': ['var', '「B2B/B2G 解决方案提供商、政府采购」'],
+    'Connection': ['var', '「全渠道 B2B 科技硬件分销商」，面向终端直销'],
+    'CDW': ['var', '「全渠道 B2B 科技/Pro AV 分销与系统集成」，直营终端'],
+    'Howard Technology': ['var', '「B2B/B2G 解决方案提供商、政府/教育采购」'],
+    'SHI': ['var', '「IT 解决方案集成商、B2B 硬件分销巨头」'],
+    'Softchoice': ['var', '「解决方案提供商、云与软件授权顾问」'],
+    'Zones': ['var', '「企事业单位 IT 解决方案、B2B 采购服务」'],
+    'Howard Store': ['var', '「B2B/B2G 解决方案提供商」线上商城'],
+    'Insight US': ['var', '「IT 解决方案集成商、B2B 科技服务」'],
+    'Direct Dial CA': ['var', '「IT 解决方案提供商、硬件 B2B 采购平台」'],
+    'Insight CA': ['var', '「解决方案集成商与 IT/Pro AV 采购」'],
+    'CDW (Canada)': ['var', '「企事业单位 IT 解决方案、全渠道科技分销」'],
+    'Softchoice CA': ['var', '「IT 硬件分销商、云与软件授权顾问」'],
+    'CompGiant': ['var', '「电脑硬件外设垂直电商与本地服务商」'],
+    'CompSource': ['var', '「B2B/B2C 计算机硬件垂直电商平台」'],
+    'CompTechDirect': ['var', '「线上零售与分销商」'],
+    'Academic Superstore': ['var', '「教育科技软件授权与硬件采购电商」'],
+    'Computer Deals Direct': ['var', '「零售与清仓批发出货平台」'],
+    'Provantage': ['var', '「B2B/B2C 科技垂直采购平台」'],
+
+    // —— 系统集成商（按项目设计安装，不备货分销）——
+    'ET Group': ['integ', '「企业级音视频集成商、UCC 工程商」'],
+    'SparkAV Ltd.': ['integ', '「AV 工程设计与 UCC 系统集成商」'],
+    'Eleven Eleven Audio Visual': ['integ', '「现场活动音视频制作、会议工程」'],
+    'Ford AV': ['integ', '「系统工程集成巨头」'],
+    'Profound Technologies': ['integ', '「解决方案工程集成商」'],
+    'Creation Networks': ['integ', '「系统集成商、工程承包商」'],
+    'Trafera': ['integ', '「K-12 智能教室集成商」'],
+    'HDTV Supply': ['integ', '「直销电商与系统集成商」，以项目集成交付为主'],
+    'AVI-SPL Canada': ['integ', '「AVI-SPL 加拿大分公司、系统集成」'],
+    'AVT.ca (Absolute Video Theatre)': ['integ', '「系统集成商、工程承包商」'],
+    'Applied Electronics': ['integ', '「系统集成巨头」'],
+    'Canada Video Communications (CVC)': ['integ', '「系统集成商、工程承包商」'],
+    'Evolution AV': ['integ', '「系统集成巨头」'],
+    'Matrix Video Communications Corp. (MVCC)': ['integ', '「系统集成巨头」'],
+    'Ramcom Communications': ['integ', '「系统集成商、弱电工程商」'],
+    'VidCom': ['integ', '「集成总代理商与系统集成商」，以集成项目为主'],
+    'AV8 Technologies': ['integ', '「系统集成商、会议室交付服务商」'],
+    'FORTÉ': ['integ', '「系统集成巨头」'],
+    'AVI-SPL': ['integ', '「全球最大音视频系统集成巨头」'],
+  };
+
+  function channelRole(name, intro) {
+    const fixed = ROLE_FIX[String(name || '').trim()];
+    if (fixed) {
+      const m = ROLE_SUB[fixed[0]];
+      return { key: fixed[0], sub: m.sub, bin: m.bin, color: m.color, why: fixed[1], conf: '高' };
+    }
+    const t = intro || '';
+    let k = '', why = '';
+    if (/厂方代表/.test(t)) { k = 'rep'; why = '简介含「厂方代表」'; }
+    else if (/分销商|增值分销|批发|总代理/.test(t) && !/直销|零售|电商|集成商|工程商/.test(t)) {
+      k = 'dist'; why = '简介含「分销 / 批发 / 总代理」';
+    } else if (/集成商|工程商|工程承包|系统集成/.test(t)) { k = 'integ'; why = '简介含「集成商 / 工程商」'; }
+    else if (/直销|电商|零售|经销商|VAR|采购平台/.test(t)) { k = 'var'; why = '简介含「直销 / 电商 / 经销商」'; }
+    if (!k) {
+      const m = ROLE_SUB.unknown;
+      return { key: 'unknown', sub: m.sub, bin: m.bin, color: m.color, why: '简介未提及渠道角色，需人工确认', conf: '低' };
+    }
+    const m = ROLE_SUB[k];
+    return { key: k, sub: m.sub, bin: m.bin, color: m.color, why, conf: '中' };
+  }
+
+  /* ============================================================
      代理集成商 P1~P3 判定
      参考零售商已标注口径：品类契合（是否真的卖 webcam/PTZ）优先于公司总营收
      ============================================================ */
@@ -1322,6 +1435,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     };
     c.advice = recommendForAgent(c);
     c.raw = rawOf(S2, row);
+    c.role = channelRole(c.name, intro);
     c.judge = judgeAgent(c);
     c.pModel = c.judge.p;
     if (!c.p) c.p = c.pModel;
@@ -1403,21 +1517,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     return { v: 34, why: '合作/建联状态待核实' };
   }
 
-  /* 渠道性质：走量型（分销/零售/B2B 批量）vs 项目型（集成商） */
-  function channelType(c) {
-    const rel = (c.relVol || '') + ' ' + (c.mainCats || '');
-    const volume = /走量|批量|出货|分销|集采|框架协议|配发|铺货|SKU|电商|零售/i.test(rel);
-    const project = /集成标配|集成项目|工程|项目交付|设计与施工|安装调试|中标|方案商|演播室搭建|contractor/i.test(rel);
-    if (volume && !project) return 'distributor';
-    if (project && !volume) return 'integrator';
-    if (volume && project) return 'hybrid';
-    return 'reseller';
-  }
-  const CH_LABEL = { distributor: '走量分销', integrator: '项目集成', hybrid: '分销 + 集成', reseller: '转售 / 其他' };
-
   function judgeAgent(c) {
     const s = scaleScore(c), f = fitScore(c), m = stageScore(c);
-    const ch = channelType(c);
+    const ch = c.role ? c.role.key : 'unknown';   // 渠道角色（见 channelRole）
     const composite = Math.round(f.v * 0.45 + s.v * 0.32 + m.v * 0.23);
     let p;
     // 阈值用原表 60 家人工 P 码回校准（一致 42/60 ≈ 70%）：综合分切 72 / 67
@@ -1427,7 +1529,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     if (f.v < 45) p = 'P3';                        // 品类契合过低一律 P3
     const conf = f.v >= 70 && c.mny ? '较高' : f.v >= 60 ? '中' : '偏低（品类或金额记录不完整）';
     return {
-      p, composite, ch, chLabel: CH_LABEL[ch], conf,
+      p, composite, ch, chLabel: c.role ? c.role.sub : '待判断', conf,
       factors: [f, s, m],
       why: `品类契合 ${f.v}×45% + 渠道体量 ${s.v}×32% + 推进阶段 ${m.v}×23% = ${composite}`,
     };
@@ -1512,6 +1614,16 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       aP: pCount(APP.agents),
       agentJudged: APP.agents.filter((c) => c.pSource === '模型判定').length,
       agentConflict: APP.agents.filter((c) => c.pConflict).length,
+      agentRole: APP.agents.reduce((a, c) => {
+        const k = (c.role && c.role.bin) || '待判断';
+        a[k] = (a[k] || 0) + 1;
+        return a;
+      }, {}),
+      agentRoleSub: APP.agents.reduce((a, c) => {
+        const k = (c.role && c.role.sub) || '待判断';
+        a[k] = (a[k] || 0) + 1;
+        return a;
+      }, {}),
       cadN: APP.customers.filter((c) => c.mny && c.mny.cur === 'CAD').length,
       noMoneyN: APP.noMoney.length,
     };
@@ -2001,7 +2113,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const sum = (arr) => arr.reduce((a, c) => a + (c.scaleMid || 0), 0);
     const head = IS_R
       ? ['#', '客户', '国家', '优先级', '综合体量 (USD)', '门店', '竞品 SKU', 'OBSBOT', '竞品深度', '建议动作', '主推产品']
-      : ['#', '客户', '国家', '优先级', '综合体量 (USD)', '覆盖 / 渠道性质', '竞品 SKU', 'OBSBOT', '产品线', '建议动作', '主推产品'];
+      : ['#', '客户', '国家', '优先级', '综合体量 (USD)', '渠道角色', '竞品 SKU', 'OBSBOT', '产品线', '建议动作', '主推产品'];
 
     const body = rows.map((c, i) => {
       const mid = IS_R
@@ -2250,7 +2362,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       <div class="drawer-h">
         <div class="top"><div>
           <h2>${esc(c.name)}</h2>
-          <div class="sub">${esc(c.typeLabel)} · ${c.country === 'US' ? '美国' : '加拿大'} · ${pChip(c, true)} ${coopChip(c)} ${contactChip(c)}</div>
+          <div class="sub">${esc(c.typeLabel)} · ${c.country === 'US' ? '美国' : '加拿大'} · ${pChip(c, true)} ${coopChip(c)} ${contactChip(c)}${
+            c.role ? ` <span class="chip ${c.role.bin === '分销商' ? 'teal' : 'blue'}" title="依据简介原句：${esc(c.role.why)}">${esc(c.role.sub)}</span>` : ''}</div>
         </div><button class="xbtn" data-act="close-drawer">×</button></div>
       </div>
       <div class="drawer-b">
@@ -2398,7 +2511,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   function syncCounts() {
     const list = APP.filtered();
-    const m = { overview: list.length, board: list.length, scale: list.filter((c) => c.mny).length, explorer: list.length };
+    const m = { overview: list.length, board: list.length, scale: list.filter((c) => c.mny).length, explorer: list.length, role: list.length };
     if (W.PIPE && W.PIPE.touched) m.pipe = list.filter((c) => W.PIPE.touched(c)).length;
     $$('.tab').forEach((b) => {
       const n = b.querySelector('.n');
@@ -2858,7 +2971,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 (function (W) {
   'use strict';
   const CORE = W.CORE, APP = W.APP;
-  const { esc, pctf, hbar, groupedBars, moneyRange } = CORE;
+  const { esc, pctf, hbar, groupedBars, moneyRange, moneyRangeShort } = CORE;
   const C = CORE.C;
   const UI = W.UI;
   const kpi = UI.kpi;
@@ -2912,8 +3025,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     // 判定因子分布
     const bins = [0, 20, 40, 60, 80, 100];
     const dist = (idx) => bins.slice(0, 5).map((b, i) => list.filter((c) => c.judge && c.judge.factors[idx].v >= b && c.judge.factors[idx].v < (bins[i + 1] || 101)).length);
+    // 渠道角色构成（按简介原文判定，详见「渠道角色」页）
     const chCount = {};
-    list.forEach((c) => { if (c.judge) chCount[c.judge.chLabel] = (chCount[c.judge.chLabel] || 0) + 1; });
+    list.forEach((c) => { if (c.role) chCount[c.role.sub] = (chCount[c.role.sub] || 0) + 1; });
 
     const confRows = conflicts.slice().sort((a, b) => Math.abs(b.judge.composite - (b.p === 'P1' ? 90 : b.p === 'P2' ? 70 : 50)) - Math.abs(a.judge.composite - (a.p === 'P1' ? 90 : a.p === 'P2' ? 70 : 50)))
       .map((c) => `<tr data-id="${c.id}">
@@ -2952,7 +3066,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         { name: '渠道体量', color: C.teal, data: dist(1) },
         { name: '推进阶段', color: C.violet, data: dist(2) },
       ], ['0–20', '20–40', '40–60', '60–80', '80–100'], { height: 170 }))}
-      ${UI.card('渠道性质构成', '来自「相关产品线体量」的走量/项目信号', donut2(chCount))}
+      ${UI.card('渠道角色构成', `分销商 ${APP.meta.agentRole['分销商'] || 0} 家 · 代理商 ${APP.meta.agentRole['代理商'] || 0} 家 · 判定依据见「渠道角色」页`, donut2(chCount))}
     </div>
 
     ${judged.length ? `<div class="card">
@@ -3092,12 +3206,136 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <li>零售商侧已验证过这个反例：Verizon（$1,340 亿）、Macy's（$225 亿）在原表里都标 P3，而 Adorama（单店、$4.5 亿量级）也是 P3 —— 说明<b>体量大不等于优先级高</b>，摄像头是否为核心品类才是分水岭。</li>
         <li>所以代理侧把「品类契合」权重设为最高（45%），体量只占 32%，避免再出现「把 Verizon 排到 P1」这类失真。</li>
         <li>推进阶段占 23%：已合作的渠道拿货路径已通，同样的品类深度值得更高优先级。</li>
-      </ul></div></div>`;
+      </ul></div></div>
+
+    <div class="card" style="margin-bottom:14px"><div class="card-h"><h3>五、渠道角色（分销商 / 代理商）怎么判的</h3>
+      <span class="hint">只看「一句话简介」的原文含义，不引入表外信息</span></div>
+      <div class="card-b">
+        <table class="ftable rules">
+          <thead><tr><th style="width:96px">角色</th><th style="width:120px">细分</th><th>判定标准</th></tr></thead>
+          <tbody>
+            <tr class="hl"><td>分销商</td><td>—</td><td>从厂商批量进货、持有库存，向<b>下一级渠道</b>供货，自己不直接做终端项目。简介里通常出现「增值分销商 / 一级总代理 / 批发分销 / 供应链」。</td></tr>
+            <tr><td rowspan="3">代理商</td><td>厂方代表</td><td>替厂商做区域渠道与销售推动，<b>不备货</b>。简介写「独立厂方代表机构」。</td></tr>
+            <tr><td>VAR · 直销</td><td>面向企业 / 政府 / 教育<b>直营</b>，带方案与服务，不承担分销备货。简介写「B2B 采购平台 / 直销电商 / 解决方案提供商」。</td></tr>
+            <tr><td>系统集成商</td><td>按项目设计、安装、调试，收入来自工程与交付。简介写「系统集成商 / 工程承包商」。</td></tr>
+          </tbody></table>
+        <div class="note" style="margin-top:10px"><b>为什么不能只靠关键词</b>：简介是营销措辞，和真实渠道身份经常不一致——CDW、Insight、SHI 都被写成「解决方案集成商 / 系统集成商」，但它们的实际生意是面向终端的 VAR 直销，并不按项目做工程；反过来 MVD 写的是「一级分销<b>代理商</b>」，实际身份是分销商。所以当前 ${APP.agents.length} 家是<b>逐家复核</b>后固定判断，每家的依据原句都列在「渠道角色」页的表格里，可逐条核对。</div>
+        <div class="note" style="margin-top:10px">以后新增的客户若不在复核表内，会退化为关键词判断（置信度标「中」）；连关键词都判不出来的，标<b>「待判断」</b>而不是硬塞进某一类。<b>这条分类不参与 P 码计算</b>，只用于决定谈判路径：分销商谈分销协议与铺货，代理商谈项目授权与报价。</div>
+      </div></div>`;
+  }
+
+  /* ============================================================
+     渠道角色：分销商 / 代理商
+     ============================================================ */
+  const ROLE_TONE = { 分销商: C.teal, 代理商: C.brand };
+
+  function roleChip(c) {
+    const r = c.role;
+    if (!r) return '';
+    const tone = r.bin === '分销商' ? 'teal' : r.key === 'rep' ? 'violet' : r.key === 'integ' ? 'mid' : 'blue';
+    return `<span class="chip ${tone}">${esc(r.sub)}</span>`;
+  }
+
+  function viewRole(list) {
+    const dist = list.filter((c) => c.role && c.role.bin === '分销商');
+    const agent = list.filter((c) => c.role && c.role.bin === '代理商');
+    const subOf = (k) => list.filter((c) => c.role && c.role.key === k);
+    const p1 = (arr) => arr.filter((c) => c.p === 'P1').length;
+    const sum = (arr) => arr.reduce((a, c) => a + (c.scaleMid || 0), 0);
+    const mm = (arr) => moneyRangeShort(sum(arr) * 0.6, sum(arr) * 1.4);
+
+    const donutItems = [
+      { label: '分销商', value: dist.length, color: C.teal },
+      { label: '代理商', value: agent.length, color: C.brand },
+    ].filter((x) => x.value);
+
+    const subItems = [
+      { label: '分销商（供货渠道）', value: subOf('dist').length, color: C.teal },
+      { label: 'VAR · 直销', value: subOf('var').length, color: C.brand },
+      { label: '系统集成商', value: subOf('integ').length, color: C.violet },
+      { label: '厂方代表', value: subOf('rep').length, color: '#6941C6' },
+    ].filter((x) => x.value);
+
+    const rows = (arr) => arr.slice().sort((a, b) => {
+      const o = { P1: 0, P2: 1, P3: 2 };
+      return (o[a.p] - o[b.p]) || ((b.scaleMid || 0) - (a.scaleMid || 0));
+    }).map((c) => `<tr data-id="${c.id}">
+        <td><div class="tname">${esc(c.name)}</div><div class="mini">${esc(c.country === 'US' ? '美国' : '加拿大')}${
+          c.mainCats ? ' · ' + esc(c.mainCats.slice(0, 22)) : ''}</div></td>
+        <td><span class="chip ${c.role.bin === '分销商' ? 'teal' : 'blue'}">${esc(c.role.bin)}</span></td>
+        <td>${roleChip(c)}</td>
+        <td>${UI.pChip(c, false)}</td>
+        <td class="num">${c.mny ? moneyRangeShort(c.mny.low, c.mny.high) : '<span class="mini muted">未量化</span>'}</td>
+        <td class="mini" style="white-space:normal;line-height:1.45;max-width:330px">${esc(c.role.why)}</td>
+        <td>${UI.prodChips(c.advice.items, 2)}</td>
+      </tr>`).join('');
+
+    return `
+    <div class="grid g-kpi" style="margin-bottom:14px">
+      ${kpi('分销商', dist.length, `向下一级渠道供货 · ${pctf(dist.length, list.length)}%`, 'accent')}
+      ${kpi('代理商', agent.length, `面向终端或项目 · ${pctf(agent.length, list.length)}%`)}
+      ${kpi('其中系统集成商', subOf('integ').length, '按项目设计安装', '')}
+      ${kpi('其中 VAR / 直销', subOf('var').length, '面向终端客户直销', '')}
+      ${kpi('P1 在分销商中的占比', pctf(p1(dist), dist.length) + '%', `${p1(dist)} 家 P1`, dist.length && p1(dist) ? 'accent' : '')}
+      ${kpi('P1 在代理商中的占比', pctf(p1(agent), agent.length) + '%', `${p1(agent)} 家 P1`)}
+    </div>
+
+    <div class="grid g-2" style="margin-bottom:14px">
+      ${UI.card('分销商 / 代理商 构成', '按「一句话简介」的原文判断',
+        dist.length && agent.length
+          ? CORE.donut(donutItems, { centerLabel: '代理集成商', size: 190 })
+          : '<div class="empty" style="padding:44px 16px">当前筛选下没有可分组的客户</div>')}
+      ${UI.card('细分角色', '分销商之外，其余都属「代理商」一侧',
+        subItems.length ? hbar(subItems, { height: 200 }) : '<div class="empty" style="padding:40px">无可统计数据</div>')}
+    </div>
+
+    <div class="grid g-2" style="margin-bottom:14px">
+      ${UI.card('两类客户的打法不一样', '基于上面的构成，给出可执行的差异',
+        `<div style="font-size:12.5px;line-height:1.75;color:var(--ink-2)">
+          <div style="margin-bottom:10px"><b style="color:${C.teal}">分销商 · ${dist.length} 家</b><br>
+            要签的是<b>分销协议</b>：备货、账期、渠道价格保护、区域或品类授权。他们的客户是下一级经销商和集成商，
+            所以谈的是<b>铺货广度</b>和<b>进不进他们的目录/报价系统</b>。${dist.length && p1(dist) ? `其中 ${p1(dist)} 家为 P1，优先从这几家破口。` : ''}</div>
+          <div><b style="color:${C.brand}">代理商 · ${agent.length} 家</b><br>
+            要谈的是<b>项目授权与报价</b>：按单支持、样机与培训、投标配合。其中 VAR/直销 ${subOf('var').length} 家看的是
+            <b>能否进他们的产品目录与线上货架</b>，系统集成商 ${subOf('integ').length} 家看的是
+            <b>能否被写进会议室/直播方案</b>——后者通常由分销商供货，所以两条线要同步铺。</div>
+        </div>
+        <div class="note" style="margin-top:12px">按体量粗算：分销商合计约 ${dist.length ? mm(dist) : '未量化'}，代理商合计约 ${agent.length ? mm(agent) : '未量化'}（由各家「综合体量」中值汇总，仅作量级参考）。</div>`)}
+      ${UI.card('身份判定口径', '判断依据都取自简介原句，可逐条复核',
+        `<div style="font-size:12.5px;line-height:1.8;color:var(--ink-2)">
+          <b>分销商</b>：从厂商批量进货、持有库存，向下一级渠道供货，自己不直接做终端项目。<br>
+          <b>代理商</b>：面向终端客户或项目销售，含三种细分——<br>
+          <span style="margin-left:12px">· <b>厂方代表</b>：替厂商做区域渠道与销售，不备货</span><br>
+          <span style="margin-left:12px">· <b>VAR · 直销</b>：面向企业/政府/教育直营，带方案与服务</span><br>
+          <span style="margin-left:12px">· <b>系统集成商</b>：按项目设计、安装、调试</span>
+        </div>
+        <div class="note" style="margin-top:12px">简介里常见「系统集成商」这类营销措辞，与真实的渠道身份并不一致（例如 CDW、Insight 写作「解决方案集成商」，实际是面向终端的 VAR 直销），
+        因此逐家复核后固定判断，并把依据原句列在表格最后一列；后续新增的客户会按关键词自动判定，判不出的标「待判断」，不硬猜。</div>`)}
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h3>${dist.length} 家分销商</h3><span class="hint">按 P 码 → 体量排序 · 点行查看客户详情</span></div>
+      <div class="card-b" style="padding-top:8px">
+        <div class="tablewrap"><table class="dt">
+          <thead><tr><th style="min-width:170px">客户</th><th>二分</th><th>细分角色</th><th>P</th><th class="num">综合体量</th>
+            <th style="min-width:230px">判断依据（简介原句）</th><th>主推</th></tr></thead>
+          <tbody>${rows(dist)}</tbody></table></div>
+      </div></div>
+
+    <div class="card" style="margin-top:14px">
+      <div class="card-h"><h3>${agent.length} 家代理商</h3><span class="hint">含厂方代表 / VAR·直销 / 系统集成商 · 点行查看详情</span></div>
+      <div class="card-b" style="padding-top:8px">
+        <div class="tablewrap" style="max-height:640px"><table class="dt">
+          <thead><tr><th style="min-width:170px">客户</th><th>二分</th><th>细分角色</th><th>P</th><th class="num">综合体量</th>
+            <th style="min-width:230px">判断依据（简介原句）</th><th>主推</th></tr></thead>
+          <tbody>${rows(agent)}</tbody></table></div>
+      </div></div>`;
   }
 
   W.EXTRA_VIEWS = W.EXTRA_VIEWS || {};
   W.EXTRA_VIEWS.judge = viewJudge;
   W.EXTRA_VIEWS.lines = viewLines;
+  W.EXTRA_VIEWS.role = viewRole;
   W.METHOD_EXTRAS = W.METHOD_EXTRAS || {};
   W.METHOD_EXTRAS.agent = methodExtra;
 })(typeof window !== 'undefined' ? window : globalThis);

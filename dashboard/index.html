@@ -255,6 +255,30 @@ table.dt tbody tr.sel{background:var(--brand-soft)}
 .kv{display:grid;grid-template-columns:104px 1fr;gap:6px 12px;font-size:12px}
 .kv dt{color:var(--ink-3);font-size:11.5px}
 .kv dd{margin:0;color:var(--ink);word-break:break-word;white-space:pre-wrap}
+.kv dd a{color:var(--brand);text-decoration:none;border-bottom:1px dashed rgba(29,78,216,.45)}
+.kv dd a:hover{border-bottom-style:solid}
+
+/* ===== 官网链接 ===== */
+/* 抽屉头部的主按钮：整块可点，左边「打开官网」右边域名 */
+.sitelink{
+  display:inline-flex;align-items:center;gap:7px;margin-top:9px;max-width:100%;
+  padding:5px 11px;border:1px solid #C7D7FE;border-radius:7px;background:#F6F9FF;
+  font-size:11.5px;font-weight:600;color:var(--brand);text-decoration:none;
+  line-height:1.5;transition:background .12s,border-color .12s;
+}
+.sitelink:hover{background:var(--brand-soft);border-color:#93B4FB}
+.sitelink .u{font-weight:500;font-size:10.5px;color:var(--ink-3);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sitelink .arw{font-size:10.5px;line-height:1}
+.sitelink.na{background:#F7F8FA;border:1px dashed #D9DEE6;color:var(--ink-3);font-weight:500;cursor:default}
+/* 表格客户名后面的小箭头：默认淡，行 hover 时点亮 */
+.tname .sitego{
+  display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:15px;height:15px;border-radius:4px;background:var(--brand-soft);color:var(--brand);
+  font-size:9.5px;font-weight:700;line-height:1;text-decoration:none;opacity:.55;
+  transition:opacity .12s,background .12s;
+}
+.tname .sitego:hover{opacity:1;background:#DBE6FF}
+tr:hover .tname .sitego{opacity:.9}
 .rawbox{
   background:var(--panel-2);border:1px solid var(--line-2);border-radius:8px;
   padding:10px 12px;font-size:11.5px;color:var(--ink-2);white-space:pre-wrap;
@@ -420,7 +444,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-03 11:41</div>
+      <div class="sub">零售商 65 + 代理集成商 60 · P1–P3 · 入驻预判与三因子判定 · 体量统一美元口径 · 构建于 2026-11-03 15:26</div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -525,6 +549,29 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   };
 
   const pctf = (a, b) => (b ? Math.round((a / b) * 1000) / 10 : 0);
+
+  /* ---------- 官网链接 ----------
+     原表 125 家全部是完整的 https:// 开头，但仍做三层兜底：
+     ① 去掉误粘的空白；② 缺协议时补 https://；③ 只放行 http/https，
+     其余（javascript: / data: / 纯文字）一律返回空串 → 页面显示「官网待补充」，
+     绝不会被原表内容带出可执行链接。 */
+  const siteUrl = (u) => {
+    let s = txt(u).replace(/[\s\u3000]+/g, '');
+    if (!s) return '';
+    if (/^\/\//.test(s)) s = 'https:' + s;
+    else if (!/^[a-z][a-z0-9+.-]*:/i.test(s) && /^[\w-]+(\.[\w-]+)+/.test(s)) s = 'https://' + s;
+    if (!/^https?:\/\/[^/?#]+/i.test(s)) return '';
+    if (/[<>"']/.test(s)) return '';
+    return s;
+  };
+  /* 只显示给人看的域名：去协议、去 www、去路径与查询串
+     （带路径的如 ca.insight.com/en_CA/home.html 会把表格列撑宽，所以只留主机名） */
+  const siteHost = (u) => {
+    const s = siteUrl(u);
+    if (!s) return '';
+    const m = s.match(/^https?:\/\/([^/?#]+)/i);
+    return m ? m[1].replace(/^www\./i, '') : '';
+  };
 
   /* 金额 → 人读文本 */
   function money(v, opt) {
@@ -1058,6 +1105,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   global.CORE = {
     C, P_STYLE, esc, txt, num, pctf, money, moneyRange, moneyRangeShort, parseMoney, CAD_RATE,
+    siteUrl, siteHost,
     SCALE_TIERS, scaleTier, parseSku, skuSummary, parseQual, normText,
     donut, hbar, logBar, groupedBars, scatter, funnel, priceLadder, heatMatrix, svgWrap,
   };
@@ -1891,7 +1939,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 (function (W) {
   'use strict';
   const CORE = W.CORE, APP = W.APP;
-  const { esc, txt, money, moneyRange, moneyRangeShort, pctf, donut, hbar, logBar, groupedBars, scatter, funnel, priceLadder, scaleTier, SCALE_TIERS } = CORE;
+  const { esc, txt, money, moneyRange, moneyRangeShort, pctf, donut, hbar, logBar, groupedBars, scatter, funnel, priceLadder, scaleTier, SCALE_TIERS, siteUrl, siteHost } = CORE;
   const C = CORE.C;
   const PROFILE = W.__PROFILE__ || 'retailer';
   const IS_R = PROFILE === 'retailer';
@@ -2284,6 +2332,15 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     { key: 'opp', label: '主推', sort: 'level' },
     { key: 'action', label: '下一步动作', sort: null },
   ];
+  /* 客户名字元：名字 + 右侧「新标签打开官网」小图标，下方显示域名。
+     图标是 <a>，不走行点击 → main 表里点它跳官网、点其它地方开抽屉。 */
+  function nameCell(c) {
+    const site = siteUrl(c.url), host = siteHost(c.url);
+    return `<td><div class="tname">${esc(c.name)}${
+      site ? `<a class="sitego" href="${esc(site)}" target="_blank" rel="noopener noreferrer" title="在新标签页打开官网：${esc(site)}" aria-label="打开官网">↗</a>` : ''
+    }</div><div class="mini">${host ? esc(host) : '官网待补充'}</div></td>`;
+  }
+
   function renderExplorer(list) {
     const rows = sortList(list);
     const cols = IS_R ? EX_COLS_R : EX_COLS_A;
@@ -2295,7 +2352,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const body = rows.map((c) => {
       const cells = IS_R
         ? [
-          `<td><div class="tname">${esc(c.name)}</div><div class="mini">${c.url ? esc(c.url.replace(/^https?:\/\//, '').replace(/\/$/, '')) : '官网待补充'}</div></td>`,
+          nameCell(c),
           `<td>${c.country === 'US' ? '美国' : '加拿大'}</td>`,
           `<td>${pChip(c, true)}</td>`,
           `<td>${scaleCell(c)}</td>`,
@@ -2308,7 +2365,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           `<td class="mini">${esc(c.action || '')}</td>`,
         ]
         : [
-          `<td><div class="tname">${esc(c.name)}</div><div class="mini">${c.url ? esc(c.url.replace(/^https?:\/\//, '').replace(/\/$/, '')) : '官网待补充'}</div></td>`,
+          nameCell(c),
           `<td>${c.country === 'US' ? '美国' : '加拿大'}</td>`,
           `<td>${pChip(c, true)}</td>`,
           `<td>${scaleCell(c)}</td>`,
@@ -2336,6 +2393,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const c = LIST().find((x) => x.id === id) || APP.customers.find((x) => x.id === id);
     if (!c) return;
     const box = el('drawer');
+    const site = siteUrl(c.url), host = siteHost(c.url);
     const sm = c.sku;
     const skuRows = sm.list.slice(0, 12).map((b) => `<div class="dimrow" style="grid-template-columns:1fr 96px">
         <div><div class="dn">${esc(b.brand)}${/obsbot/i.test(b.brand) ? ' <span class="chip blue" style="font-size:9px">我方</span>' : ''}</div>
@@ -2351,7 +2409,13 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <div><div class="dn">${['品类契合', '渠道体量', '推进阶段'][i]}</div><div class="ev">${esc(f.why)}</div></div>
         <div class="sc">${f.v}</div></div>`).join('') : '';
 
-    const rawRows = Object.entries(c.raw || {}).map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v === null || v === '' ? '<span class="mini muted">空</span>' : esc(v)}</dd>`).join('');
+    const rawRows = Object.entries(c.raw || {}).map(([k, v]) => {
+      let show;
+      if (v === null || v === '') show = '<span class="mini muted">空</span>';
+      else if (k === '官网' && site) show = `<a href="${esc(site)}" target="_blank" rel="noopener noreferrer">${esc(v)} ↗</a>`;
+      else show = esc(v);
+      return `<dt>${esc(k)}</dt><dd>${show}</dd>`;
+    }).join('');
 
     const ladder = (IS_R && sm.lines.webcam.length) ? priceLadder(
       sm.lines.webcam.slice(0, 8).map((x) => ({ brand: x.brand, sku: x.sku, lo: x.lo, hi: x.hi })),
@@ -2364,6 +2428,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           <h2>${esc(c.name)}</h2>
           <div class="sub">${esc(c.typeLabel)} · ${c.country === 'US' ? '美国' : '加拿大'} · ${pChip(c, true)} ${coopChip(c)} ${contactChip(c)}${
             c.role ? ` <span class="chip ${c.role.bin === '分销商' ? 'teal' : 'blue'}" title="依据简介原句：${esc(c.role.why)}">${esc(c.role.sub)}</span>` : ''}</div>
+          ${site
+            ? `<a class="sitelink" href="${esc(site)}" target="_blank" rel="noopener noreferrer" title="在新标签页打开：${esc(site)}"><b>打开官网</b><span class="u">${esc(host)}</span><span class="arw">↗</span></a>`
+            : '<div class="sitelink na" title="原表「官网」列为空或不是有效网址">官网待补充</div>'}
         </div><button class="xbtn" data-act="close-drawer">×</button></div>
       </div>
       <div class="drawer-b">
@@ -3350,7 +3417,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 (function (W) {
   'use strict';
   const CORE = W.CORE, APP = W.APP;
-  const { esc, pctf, funnel, hbar, moneyRangeShort } = CORE;
+  const { esc, pctf, funnel, hbar, moneyRangeShort, siteUrl, siteHost } = CORE;
   const C = CORE.C;
   const UI = W.UI;
 
@@ -3443,6 +3510,20 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     return `<span style="color:${tone}" title="渠道角色（依据简介原句）：${esc(c.role.why)}">${esc(label)}</span>`;
   }
 
+  /* 客户名单元格：名字 +「打开官网」小图标，第二行仍是 渠道角色 · 国家 · 主推。
+     图标是 <a>，bindView 的行点击会跳过 a → 点图标直接开新标签去官网，
+     点名字/其它空白处开右侧抽屉（抽屉头部有完整的「打开官网」按钮）。 */
+  function nameCell(c) {
+    const site = siteUrl(c.url), host = siteHost(c.url);
+    const adv = c.advice && c.advice.items && c.advice.items.length ? ' · 主推 ' + c.advice.items.map((i) => i.key).join('/') : '';
+    const link = site
+      ? `<a class="sitego" href="${esc(site)}" target="_blank" rel="noopener noreferrer" title="在新标签页打开官网：${esc(site)}" aria-label="打开官网">↗</a>`
+      : '';
+    const tail = host ? `<span class="mini" style="opacity:.75"> · ${esc(host)}</span>` : '';
+    return `<div class="tname">${esc(c.name)}${link}</div>
+      <div class="mini">${roleMini(c)} · ${c.country === 'US' ? '美国' : '加拿大'}${adv}${tail}</div>`;
+  }
+
   /* ---------- 视图 ---------- */
   function viewPipe(list) {
     const t0 = today(), t7 = addDays(7);
@@ -3468,7 +3549,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       const late = r.planDate && r.planDate < t0 && CLOSED.indexOf(r.stage) < 0;
       const opt = (arr, cur) => ['<option value="">未填写</option>'].concat(arr.map((s) => `<option value="${esc(s)}"${cur === s ? ' selected' : ''}>${esc(s)}</option>`)).join('');
       return `<tr data-id="${c.id}" class="${late ? 'late' : ''}"${r.by ? ` title="最近更新：${esc(r.by)}${r.updated ? ' · ' + esc(r.updated) : ''}"` : ''}>
-        <td><div class="tname">${esc(c.name)}</div><div class="mini">${roleMini(c)} · ${c.country === 'US' ? '美国' : '加拿大'}${(() => { const a = c.advice; return a && a.items && a.items.length ? ' · 主推 ' + a.items.map((i) => i.key).join('/') : ''; })()}</div></td>
+        <td>${nameCell(c)}</td>
         <td>${UI.pChip(c, false)}</td>
         <td>${c.mny ? moneyRangeShort(c.mny.low, c.mny.high) : '<span class="mini muted">未量化</span>'}</td>
         <td><select class="pin" data-id="${c.id}" data-f="stage">${opt(STAGES, r.stage || '')}</select></td>

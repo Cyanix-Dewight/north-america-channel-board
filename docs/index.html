@@ -203,6 +203,10 @@ select:focus,input:focus{border-color:var(--brand-2);box-shadow:0 0 0 3px rgba(5
 /* 细分标签：跟「新增」chip 并列在客户名第二行，颜色区分三档 */
 .mini .seg{font-weight:650}
 
+/* 图表收起后留一条窄提示条（约 28px），比两张图省近 190px */
+.chartfold{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin:0 2px 10px}
+.chartfold .mini{margin-left:auto}
+
 /* ===== table ===== */
 .tablewrap{overflow:auto;max-height:calc(100vh - 240px)}
 table.dt{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
@@ -243,6 +247,19 @@ table.dt tbody tr.sel{background:var(--brand-soft)}
 .quad{stroke:#DFE4EC;stroke-width:1;stroke-dasharray:4 4}
 .hoverable{cursor:pointer}
 .hoverable:hover{opacity:.82}
+/* 可点击的条形（负责人负载下钻）：hover 高亮标签文字，dim 表示当前被筛选掉 */
+.hoverable.act:hover{opacity:1}
+.hoverable.act:hover .bar-lbl{fill:var(--brand);font-weight:650}
+.hoverable.act:hover .bar-val{fill:var(--brand)}
+/* 负责人筛选 chip（点了条形图之后出现在表格上方，可一键清除） */
+.ownerchip{
+  display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;
+  border:1px solid #B9CDF7;background:var(--brand-soft);color:var(--brand);
+  border-radius:999px;font-size:12px;font-weight:650;cursor:pointer;line-height:1;
+}
+.ownerchip:hover{background:#E0E9FF;border-color:#9FB8F2}
+.ownerchip .x{font-size:14px;line-height:1;opacity:.7}
+.ownerchip:hover .x{opacity:1}
 
 /* ===== drawer ===== */
 .scrim{
@@ -464,7 +481,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 142 + 代理集成商 670（含新增名单 73 / 614）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-05 15:55</div>
+      <div class="sub">零售商 142 + 代理集成商 670（含新增名单 73 / 614）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-05 17:47</div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -961,7 +978,11 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       const w = v == null ? 0 : Math.max(2, (v / max) * bw);
       const col = d.color || C.brand;
       const label = d.label.length > 22 ? d.label.slice(0, 21) + '…' : d.label;
-      return `<g class="hoverable">
+      /* d.k 存在时这一行可点：带 data-k，宿主页面自行绑事件（负责人负载用来下钻） */
+      const clk = d.k == null ? '' : ` data-k="${esc(d.k)}"`;
+      const gcls = 'hoverable' + (clk ? ' act' : '');
+      const gop = d.dim ? ' opacity=".42"' : '';
+      return `<g class="${gcls}"${clk}${gop}>
         <title>${esc(d.label)}：${esc(d.text || (v == null ? '未量化' : v))}</title>
         <text x="${padL - 8}" y="${y + rowH / 2 + 3.5}" text-anchor="end" class="bar-lbl">${esc(label)}</text>
         <rect x="${padL}" y="${y + rowH / 2 - 6.5}" width="${bw}" height="13" rx="3" fill="#F1F3F6"/>
@@ -3697,6 +3718,16 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   let SCOPE = 'all';
   /* 细分：新增名单里混着零售商 / 渠道商 / 终端用户，用户要能把终端用户单独摘掉 */
   let SEGF = 'all';
+  /* 负责人下钻：点「负责人负载」里的条形 → 只看这个人名下的客户；空串代表不筛 */
+  let OWNERF = '';
+  /* 图表区是否展开（本机记忆）。收起后跟进表多出约 190px 的纵向空间 */
+  const CHARTS_KEY = 'obsbot.pipe.charts';
+  let CHARTS = true;
+  try { CHARTS = localStorage.getItem(CHARTS_KEY) !== '0'; } catch (e) { CHARTS = true; }
+  function setCharts(on) {
+    CHARTS = !!on;
+    try { localStorage.setItem(CHARTS_KEY, CHARTS ? '1' : '0'); } catch (e) { /* 隐私模式下不落盘 */ }
+  }
 
   function viewPipe(list) {
     const scopeAll = list;
@@ -3709,6 +3740,12 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     segPool.forEach((c) => { const k = c.seg || '未标注'; segCount[k] = (segCount[k] || 0) + 1; });
     const SEG_ORDER = ['零售', '渠道', '终端·非渠道', '待核实'];
     if (SEGF !== 'all') list = list.filter((c) => c.batch === 'new' && (c.seg || '未标注') === SEGF);
+
+    /* 负责人负载要在「负责人筛选之前」统计：否则点掉 Evelyn 之后图里只剩一根条，就没法再切别人了。
+       换范围 / 换细分后若这个人已经不在池子里，自动取消筛选，避免出现一张空表。 */
+    const ownerPool = list.filter((c) => ownerOf(c));
+    if (OWNERF && !ownerPool.some((c) => ownerOf(c) === OWNERF)) OWNERF = '';
+    if (OWNERF) list = list.filter((c) => ownerOf(c) === OWNERF);
 
     const t0 = today(), t7 = addDays(7);
     const filled = list.filter(touched);
@@ -3724,9 +3761,19 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     if (blank) stageItems.push({ label: '未填写阶段', value: blank, color: '#E5E9F0' });
 
     const ownerMap = {};
-    owned.forEach((c) => { const o = ownerOf(c); ownerMap[o] = (ownerMap[o] || 0) + 1; });
-    const ownerItems = Object.keys(ownerMap).sort((a, b) => ownerMap[b] - ownerMap[a]).slice(0, 10)
-      .map((k) => ({ label: k, value: ownerMap[k], color: C.brand, text: ownerMap[k] + ' 家' }));
+    ownerPool.forEach((c) => { const o = ownerOf(c); ownerMap[o] = (ownerMap[o] || 0) + 1; });
+    const ownerAll = Object.keys(ownerMap).sort((a, b) => ownerMap[b] - ownerMap[a] || String(a).localeCompare(String(b), 'zh'));
+    const ownerTop = ownerAll.slice(0, 8);
+    if (OWNERF && ownerTop.indexOf(OWNERF) < 0) ownerTop.push(OWNERF);   // 被筛中的人一定留在图上
+    const ownerItems = ownerTop.map((k) => ({
+      k,
+      label: k,
+      value: ownerMap[k],
+      color: OWNERF ? (k === OWNERF ? C.brand : '#B9CDF7') : C.brand,
+      dim: !!(OWNERF && k !== OWNERF),
+      text: ownerMap[k] + ' 家' + (k === OWNERF ? ' · 已在看' : ''),
+    }));
+    const ownerHidden = ownerAll.length - ownerTop.length;
 
     const rows = UI.sortList(list).map((c) => {
       const r = rec(c);
@@ -3750,6 +3797,12 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     }).join('');
 
     const scopeBtn = (k, label, n) => `<button data-pipe-scope="${k}" class="${SCOPE === k ? 'on' : ''}">${label}<span class="n">${n}</span></button>`;
+    const ownerBar = OWNERF
+      ? `<div class="segbar"><span class="lbl">负责人</span>
+          <button class="ownerchip" data-pipe-owner="" title="清除负责人筛选，恢复当前范围内的全部客户">只看 ${esc(OWNERF)} · ${list.length} 家<span class="x" aria-hidden="true">×</span></button>
+          <span class="mini muted">点「×」或再点一次「负责人负载」里的同一条形即可恢复全部</span>
+        </div>`
+      : '';
     const segBar = segPool.length && Object.keys(segCount).length >= 2
       ? `<div class="segbar"><span class="lbl">新增名单细分</span>
           <div class="scope">
@@ -3760,9 +3813,33 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         </div>`
       : '';
 
+    /* 图表区可收起：这一页的主角是下面的跟进表，收起两张图就能多显示三四行。
+       收起状态记在本机（localStorage），各人习惯不同，不互相影响。 */
+    const chartsBlock = CHARTS
+      ? `<div class="grid g-2" style="margin-bottom:14px">
+      ${UI.card('开发阶段分布', '按当前记录统计 · 未填写单独列出',
+        filled.length
+          ? donutStages(stageItems)
+          : '<div class="empty" style="padding:44px 16px">还没有任何跟进记录<br><span class="mini muted">在下方表格里选一个「当前阶段」即可开始</span></div>')}
+      ${UI.card('负责人负载',
+        ownerItems.length
+          ? (OWNERF ? '当前只看 ' + OWNERF + ' · 再点一次该条恢复' : '按已指派的客户数 · 点条形只看这个人的客户')
+          : '按已指派的客户数',
+        ownerItems.length
+          ? hbar(ownerItems, { rowH: 26, padR: 112 })
+            + (ownerHidden > 0 ? `<div class="mini muted" style="text-align:right;margin-top:-2px">另有 ${ownerHidden} 位负责人未显示（只列前 8）</div>` : '')
+          : '<div class="empty" style="padding:44px 16px">还没有指派负责人<br><span class="mini muted">填上「负责人」后这里会显示各自在管多少家</span></div>',
+        '<button class="btn ghost sm" data-pipe-charts="1" title="收起这两张图，把纵向空间让给下面的列表">收起图表</button>')}
+    </div>`
+      : `<div class="chartfold"><span class="mini muted">图表已收起 · 列表占用更多纵向空间</span>
+          <button class="btn ghost sm" data-pipe-charts="1">展开图表</button></div>`;
+
+    /* 表格可视高度：展开图表时按原样留出上方空间；收起后一路放到接近视口底部 */
+    const twH = CHARTS ? 'max(380px, calc(100vh - 215px))' : 'max(340px, calc(100vh - 400px))';
+
     return `
     <div class="grid g-kpi" style="margin-bottom:14px">
-      ${UI.kpi('在管客户', list.length, SCOPE === 'all' ? '当前类型的全部客户' : (SCOPE === 'new' ? '当前只看新增名单' : '当前只看原表客户'), 'accent')}
+      ${UI.kpi('在管客户', list.length, OWNERF ? '只看负责人 ' + OWNERF : (SCOPE === 'all' ? '当前类型的全部客户' : (SCOPE === 'new' ? '当前只看新增名单' : '当前只看原表客户')), 'accent')}
       ${UI.kpi('已指派负责人', owned.length, `覆盖率 ${pctf(owned.length, list.length)}%`)}
       ${UI.kpi('本周待跟进', week.length, `${t0} ~ ${t7}`, week.length ? 'alert' : '')}
       ${UI.kpi('逾期未跟进', overdue.length, overdue.length ? '计划日期已过，优先处理' : '暂无逾期', overdue.length ? 'alert' : '')}
@@ -3770,13 +3847,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       ${UI.kpi('有进展无下一步', noPlan.length, noPlan.length ? '缺计划日期，容易断档' : '计划日期都齐')}
     </div>
 
-    <div class="grid g-2" style="margin-bottom:14px">
-      ${UI.card('开发阶段分布', '按当前记录统计 · 未填写单独列出',
-        filled.length
-          ? donutStages(stageItems)
-          : '<div class="empty" style="padding:44px 16px">还没有任何跟进记录<br><span class="mini muted">在下方表格里选一个「当前阶段」即可开始</span></div>')}
-      ${UI.card('负责人负载', '按已指派的客户数', ownerItems.length ? hbar(ownerItems, { height: 200 }) : '<div class="empty" style="padding:44px 16px">还没有指派负责人<br><span class="mini muted">填上「负责人」后这里会显示各自在管多少家</span></div>')}
-    </div>
+    ${chartsBlock}
 
     <div class="card">
       <div class="card-h"><h3>客户开发与跟进记录</h3>
@@ -3790,8 +3861,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           <button class="btn ghost sm" data-pipe-act="clear">清空记录</button>
         </div></div>
       <div class="card-b" style="padding-top:8px">
+        ${ownerBar}
         ${segBar}
-        <div class="tablewrap" style="max-height:calc(100vh - 330px)"><table class="dt pipe">
+        <div class="tablewrap" style="max-height:${twH}"><table class="dt pipe">
           <thead><tr>
             <th style="min-width:190px">客户</th><th>P</th><th class="num">综合体量</th>
             <th style="min-width:104px">当前阶段</th>
@@ -4017,6 +4089,27 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       if (SCOPE === 'base') SEGF = 'all';   // 原表客户没有细分，切回来要清掉
       rerenderKeepScroll();
     }));
+    /* 负责人负载下钻：点条形 → 只看这个人；再点同一条 / 点「×」→ 恢复全部 */
+    $$('g.act[data-k]', box).forEach((g) => {
+      g.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const k = g.getAttribute('data-k') || '';
+        if (!k) return;
+        OWNERF = OWNERF === k ? '' : k;
+        rerenderKeepScroll();
+      });
+    });
+    $$('[data-pipe-owner]', box).forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      OWNERF = '';
+      rerenderKeepScroll();
+    }));
+    /* 图表收起 / 展开：纯粹为了把纵向空间让给列表 */
+    $$('[data-pipe-charts]', box).forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setCharts(!CHARTS);
+      rerenderKeepScroll();
+    }));
     const act = (name, fn) => {
       const b = box.querySelector('[data-pipe-act="' + name + '"]');
       if (b) b.addEventListener('click', fn);
@@ -4132,7 +4225,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   W.PIPE_VIEW = viewPipe;
   W.PIPE_BIND = bindView;
-  W.PIPE = { DB: () => DB, STAGES, HEAD, scope: () => SCOPE, seg: () => SEGF, rec, ck, touched, applyRemote, cloudOn, today, markSynced, pendOf, ownerOf };
+  W.PIPE = { DB: () => DB, STAGES, HEAD, scope: () => SCOPE, seg: () => SEGF, owner: () => OWNERF, charts: () => CHARTS, setCharts, rec, ck, touched, applyRemote, cloudOn, today, markSynced, pendOf, ownerOf };
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <script>window.__CLOUD__ = {"endpoint":"https://na-channel-board-91303.app.workbuddy.host","publishableKey":"wbpk_AGkoQ4nhcy53ZjRenRni7X_MrmGdXs3sKRsZOi74hfM3tFJznieAyiW","pollMs":6000,"site":"https://na-channel-board-91303.app.workbuddy.host/?sharecode=FRAIEZBXGM"};</script>

@@ -31,6 +31,24 @@
 
 顶部「零售商 / 代理 / 集成商」切换决定当前看到的是哪一类客户，页签随之显隐。
 
+### 原表客户重分类（2026-11 第二版）
+
+原表 125 家也按同一套「身份名词」口径复核了一遍，判定与所在表不一致的登记在 `data/base_reclass.json`，构建时跨表搬迁，并在备注里留痕（`重分类留痕：原属零售商表；是否有门店=否；…；理由：…`）：
+
+| 客户 | 原表 | 现在 | 依据 |
+|---|---|---|---|
+| Intcomex US | 零售商 | 代理集成商 | 跨境/出口分销商，一级总代性质 |
+| OfficeWonderland | 零售商 | 代理集成商 | 垂直 B2B 经销商（经销商在前） |
+| Ashlin Technology Solutions | 零售商 | 代理集成商 | IT 服务 / MSP / 系统集成，无零售 |
+| CompGiant / CompSource / CompTechDirect | 代理 | 零售商 | 垂直电商 / 线上零售 |
+| Academic Superstore / Computer Deals Direct | 代理 | 零售商 | 电商平台 |
+| GoElectronic / HDTV Supply | 代理 | 零售商 | 线上直销卖货 |
+
+- **字段映射**：两表结构不同，搬迁时 `覆盖范围↔覆盖区域`、`头部竞品品牌体量↔合作竞品`、`Webcam体量↔相关产品线体量` 互转；目标表没有的字段（门店数、是否在售 webcam、主要品类、是否代理竞品）原文写进备注，**不丢数据**。
+- **门店数不会被填 0**：代理表没有门店列，搬过来的行门店数为空（未知），不是 0。
+- **跟进记录跟着迁**：记录主键是 `类型|客户名`，搬迁后已在云端把 10 条记录的 id 改成新前缀（`retailer|IntcomexUS` → `agent|IntcomexUS`），记录数与字段不变。
+- **仍是零售侧的 B2B 平台**：Staples Business Advantage、Quill、Newegg Business、OfficeSupply.com、OfficeMax Grand & Toy、WB Mason、Provantage、Direct Dial、A5 IT、Cloudtechmart 含 B2B，但身份名词是电商/采购平台，按口径留在零售侧；需要改的话在 `base_reclass.json` 加一条即可。
+
 ### 新增客户池（名单阶段）
 
 除原表 125 家外，看板还带一批**新增名单**（2026-11 追加，源文件 `北美客户新增.xlsx`）。这批和原表客户有本质区别：

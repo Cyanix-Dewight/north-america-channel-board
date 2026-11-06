@@ -505,7 +505,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-06 17:02<span id="sub-extra"></span></div>
+      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-06 17:14<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -4466,9 +4466,10 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   function paintSub() {
     const box = document.getElementById('sub-extra');
-    if (!box) return;
     const n = APP.customers.filter((c) => c.entry).length;
-    box.textContent = n ? ' · 含手工录入 ' + n + ' 家' : '';
+    if (box) box.textContent = n ? ' · 含手工录入 ' + n + ' 家' : '';
+    const pill = document.getElementById('pill-count');
+    if (pill && APP.meta) pill.textContent = APP.meta.retailerN + ' 家零售商 · ' + APP.meta.agentN + ' 家代理集成商';
   }
 
   /* ---------------- 视图 ---------------- */

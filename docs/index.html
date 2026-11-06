@@ -496,6 +496,34 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 .fld.entrybar{flex-direction:row;align-items:center;gap:10px;flex-wrap:wrap}
 @media (max-width:1180px){.egrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
+/* ===== 抽屉内的跟进记录编辑区（支持换行 · 失焦即保存） ===== */
+.pipeedit{
+  padding:12px 13px 11px;border:1px solid #DCE6FA;border-radius:10px;
+  background:linear-gradient(180deg,#F7FAFF,#FFF 46%);
+}
+.pipeedit > h4{margin-bottom:8px}
+.dfinfo{display:flex;flex-wrap:wrap;gap:4px 16px;margin-bottom:10px;font-size:11.5px;color:var(--ink-3)}
+.dfinfo b{color:var(--ink);font-weight:650}
+.dfgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 11px}
+.dfld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.dfld.full{grid-column:1/-1}
+.dfld > .lb{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-height:15px}
+.dfld > .lb > span:first-child{font-size:11.5px;font-weight:600;color:#475467;letter-spacing:.02em}
+.dfld > .lb .tag{font-size:10px;color:#B4BDCB;font-variant-numeric:tabular-nums;font-weight:500}
+.dfgrid textarea{
+  width:100%;min-height:44px;padding:7px 9px;font:inherit;font-size:12px;line-height:1.6;
+  color:var(--ink);border:1px solid #D0D5DD;border-radius:7px;background:#fff;
+  resize:vertical;transition:border-color .12s,box-shadow .12s,background .12s;
+}
+.dfgrid textarea:hover{border-color:#B9C0CC}
+.dfgrid textarea:focus{outline:none;border-color:var(--brand-2);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+.dfgrid textarea.dirty{background:#FFFDF3;border-color:#F7C948}
+.dfgrid textarea::placeholder{color:#B4BDCB}
+.dfgrid textarea[readonly]{background:#F9FAFB;color:#98A2B3;cursor:not-allowed}
+.dfmsg{display:flex;align-items:center;gap:6px;margin-top:7px;min-height:15px;font-size:11px;color:var(--ink-3)}
+.dfmsg .dot{width:6px;height:6px;border-radius:50%;background:#12B76A;flex:0 0 auto}
+@media (max-width:560px){.dfgrid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -505,7 +533,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-06 17:46<span id="sub-extra"></span></div>
+      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-06 18:17<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -2701,6 +2729,41 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       { marks: (c.advice.items || []).map((i) => ({ name: i.key, lo: i.prod.lo, hi: i.prod.hi })) }
     ) : '';
 
+    /* ---------- 跟进记录（抽屉里直接编辑） ----------
+       四个自由文本字段：已完成动作 / 下一步行动 / 开发难点 / 备注。
+       走 W.PIPE.put() 同一条写入通道 → 本机 localStorage + 云端 pipe_records.note 等列，
+       与跟进表里的输入框是同一份数据，改哪边另一边都会跟着变。
+       「备注」是跟进侧新增的字段，不是原表里那个「备注」——原表字段仍原样留在文末「原表字段」区。 */
+    const PR = (W.PIPE && W.PIPE.rec) ? W.PIPE.rec(c) : {};
+    const CAN_EDIT = !!(W.PIPE && W.PIPE.put);
+    const prOwner = (W.PIPE && W.PIPE.ownerOf) ? W.PIPE.ownerOf(c) : '';
+    const dfld = (k, label, ph, rows, full) => `
+      <div class="dfld${full ? ' full' : ''}">
+        <span class="lb"><span>${label}</span><span class="tag" data-df-tag="${k}"></span></span>
+        <textarea rows="${rows}" data-df="${k}" placeholder="${esc(ph)}"${CAN_EDIT ? '' : ' readonly'}>${esc(PR[k] || '')}</textarea>
+      </div>`;
+    const pipeSect = `
+      <div class="sect pipeedit">
+        <h4>跟进记录（可直接填写 · 支持换行）</h4>
+        <div class="dfinfo">
+          <span>当前阶段 <b>${esc(PR.stage || '未填写')}</b></span>
+          <span>负责人 <b>${esc(prOwner || '待指派')}</b></span>
+          <span>计划跟进 <b>${esc(PR.planDate || '—')}</b></span>
+          <span>最近跟进 <b>${esc(PR.lastDate || '—')}</b></span>
+        </div>
+        <div class="dfgrid">
+          ${dfld('done', '已完成动作', '这一轮实际做掉的事，便于交接与复盘', 2, false)}
+          ${dfld('next', '下一步行动', '接下来要推动的具体动作', 2, false)}
+          ${dfld('difficulty', '开发难点', '卡在哪里 · 需要什么支持', 2, true)}
+          ${dfld('note', '备注', '自由记录：联系人、报价口径、会议纪要…（可换行）', 3, true)}
+        </div>
+        <div class="dfmsg" id="df-msg">${CAN_EDIT
+          ? (W.PIPE.cloudOn()
+            ? '<span class="dot"></span>离开输入框即自动保存，并同步给所有打开链接的人'
+            : '<span class="dot"></span>离开输入框即自动保存到本机浏览器')
+          : '当前模块未加载，暂不能编辑'}</div>
+      </div>`;
+
     box.innerHTML = `
       <div class="drawer-h">
         <div class="top"><div>
@@ -2713,6 +2776,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         </div><button class="xbtn" data-act="close-drawer">×</button></div>
       </div>
       <div class="drawer-b">
+        ${pipeSect}
         ${c.batch === 'new' && c.seg ? `<div class="sect"><h4>分类依据（按「一句话简介」判定）</h4>
           <div class="note" style="margin-bottom:6px"><b>${esc(c.seg)}</b>：${esc(c.segWhy || '')}</div>
           <div class="mini muted">${c.segKw === '人工复核' ? '这一家由人工逐条复核后定档（简介里两类信号并存或有歧义），不是规则自动判的。' : (c.segKw ? '简介里最先出现的身份词：<b>' + esc(c.segKw) + '</b>。' : '简介里没有识别到身份词，标为待核实。')}</div>
@@ -2762,10 +2826,66 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       </div>`;
     box.classList.add('on');
     el('scrim').classList.add('on');
-    bindDrawerClicks(box);
+    bindDrawerClicks(box, c);
   }
-  function bindDrawerClicks(box) {
+  function bindDrawerClicks(box, c) {
     $$('[data-act="close-drawer"]', box).forEach((b) => b.addEventListener('click', closeDrawer));
+    bindDrawerEdits(box, c);
+  }
+
+  /* 抽屉里的四个自由文本字段。
+     保存时机取 textarea 的 change（失焦且有改动时触发）—— 多行文本一边打字一边写云端
+     会产生大量无用请求，也没法撤销；离开输入框落库更符合习惯。
+     关抽屉前浏览器会先 blur，所以点「×」或遮罩都不会丢最后一笔。 */
+  function bindDrawerEdits(box, c) {
+    const tas = $$('textarea[data-df]', box);
+    if (!tas.length || !W.PIPE || !W.PIPE.put || !c) return;
+
+    // 去掉尾部空白/空行（保留行首缩进与中间所有换行）；全是空白就当清空
+    const norm = (t) => {
+      const v = String(t.value == null ? '' : t.value).replace(/[ \t\r\n]+$/, '');
+      return v.trim() === '' ? '' : v;
+    };
+    const paintTag = (t) => {
+      const g = box.querySelector('[data-df-tag="' + t.dataset.df + '"]');
+      if (!g) return;
+      const n = norm(t).length;
+      g.textContent = n ? n + ' 字' : '';
+    };
+
+    tas.forEach((t) => {
+      // 与跟进表里的输入框保持一致：不冒泡，避免被外层的行点击接走
+      ['click', 'mousedown', 'focus'].forEach((ev) => t.addEventListener(ev, (e) => e.stopPropagation()));
+      let last = norm(t);
+      paintTag(t);
+
+      const commit = () => {
+        const v = norm(t);
+        t.classList.remove('dirty');
+        paintTag(t);
+        if (v === last) return;
+        last = v;
+        W.PIPE.put(c, t.dataset.df, v);
+        const r = W.PIPE.rec(c);
+        const msg = el('df-msg');
+        if (msg) {
+          msg.className = 'dfmsg';
+          msg.innerHTML = '<span class="dot"></span>已保存' + (W.PIPE.cloudOn() ? '并同步' : '到本机')
+            + ' · ' + esc(r.updated || W.PIPE.today()) + (r.by ? ' · ' + esc(r.by) : '');
+        }
+        // 背后的跟进表 / KPI / 图表跟着更新（抽屉不在 #view-pipe 里，不会被重绘冲掉）
+        if (W.PIPE.refresh) W.PIPE.refresh();
+        if (W.__toast) W.__toast(W.PIPE.cloudOn() ? '已保存并同步' : '已保存');
+      };
+
+      t.addEventListener('input', () => {
+        t.classList.toggle('dirty', norm(t) !== last);
+        paintTag(t);
+      });
+      // change 与 blur 都会触发：第二次因值未变直接返回，不会重复写
+      t.addEventListener('change', commit);
+      t.addEventListener('blur', commit);
+    });
   }
   function closeDrawer() {
     el('drawer').classList.remove('on');
@@ -3824,7 +3944,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   function touched(c) {
     const r = rec(c);
-    return STAGES.some((s) => s === r.stage) || !!(r.owner || r.next || r.done || r.planDate || r.lastDate || r.difficulty || r.direction || r.verify);
+    return STAGES.some((s) => s === r.stage) || !!(r.owner || r.next || r.done || r.planDate || r.lastDate || r.difficulty || r.direction || r.verify || r.note);
   }
   const today = () => {
     const d = new Date();
@@ -3876,7 +3996,12 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         ? '<span class="chip lead" title="新增客户：只有国家 / 客户名 / 优先级 / 简介 / 官网，体量与竞品待补研">新增</span>'
         : '';
     const tail = host ? `<span class="mini" style="opacity:.75"> · ${esc(host)}</span>` : '';
-    return `<div class="tname">${esc(c.name)}${lead}${link}</div>
+    /* 填过备注的在客户名后挂一个灰标：不用一个个点开抽屉才知道谁写了备注 */
+    const rn = rec(c);
+    const noteMark = rn.note
+      ? `<span class="chip low" title="已填备注：${esc(String(rn.note).slice(0, 90))}${String(rn.note).length > 90 ? '…' : ''}">备注</span>`
+      : '';
+    return `<div class="tname">${esc(c.name)}${lead}${noteMark}${link}</div>
       <div class="mini">${c.batch === 'new' ? segChip(c) : roleMini(c)} · ${countryLabel(c)}${c.ind ? ' · ' + UI.indChip(c, true) : ''}${adv}${tail}</div>`;
   }
 
@@ -4067,7 +4192,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   /* ---------- 云端共享（接入 sync.js） ---------- */
   const BACK = {
     stage: 'stage', next_action: 'next', done_action: 'done', owner: 'owner', plan_date: 'planDate',
-    last_date: 'lastDate', difficulty: 'difficulty', direction: 'direction', verify: 'verify',
+    last_date: 'lastDate', difficulty: 'difficulty', direction: 'direction', verify: 'verify', note: 'note',
   };
   let rerenderRef = null;
   let firstPull = true;
@@ -4175,7 +4300,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       if (r.updated_by) nr.by = r.updated_by;
 
       // 云端行完全没有内容且本机也没有待同步字段 → 清掉空壳
-      const hasData = ['stage', 'next', 'done', 'owner', 'planDate', 'lastDate', 'difficulty', 'direction', 'verify']
+      const hasData = ['stage', 'next', 'done', 'owner', 'planDate', 'lastDate', 'difficulty', 'direction', 'verify', 'note']
         .some((k) => nr[k]);
 
       if (!hasData && !Object.keys(pend).length) {
@@ -4310,7 +4435,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   }
 
   /* ---------- CSV ---------- */
-  const HEAD = ['类型', '数据批次', '渠道角色', '细分角色', '客户名', '目标行业', '优先级', '国家', '综合体量下限USD', '综合体量上限USD', '当前阶段', '已完成动作', '下一步行动', '负责人', '计划跟进', '最近跟进', '开发难点', '预期合作方向', '数据核实', '最近更新'];
+  const HEAD = ['类型', '数据批次', '渠道角色', '细分角色', '客户名', '目标行业', '优先级', '国家', '综合体量下限USD', '综合体量上限USD', '当前阶段', '已完成动作', '下一步行动', '负责人', '计划跟进', '最近跟进', '开发难点', '预期合作方向', '数据核实', '备注', '最近更新'];
   function csvCell(v) { return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"'; }
 
   function exportCSV() {
@@ -4322,7 +4447,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         c.typeLabel, c.batch === 'new' ? '新增名单' : '原表', c.role ? c.role.bin : '', c.role ? c.role.sub : '', c.name, c.ind || '', c.p || '', c.country,
         c.mny ? Math.round(c.mny.low) : '', c.mny ? Math.round(c.mny.high) : '',
         r.stage || '', r.done || '', r.next || '', ownerOf(c), r.planDate || '', r.lastDate || '',
-        r.difficulty || '', r.direction || '', r.verify || '', r.updated || '',
+        r.difficulty || '', r.direction || '', r.verify || '', r.note || '', r.updated || '',
       ].map(csvCell).join(','));
     });
     const blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
@@ -4366,7 +4491,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         const col = (n) => head.indexOf(n);
         const iName = col('客户名'), iType = col('类型');
         if (iName < 0) { if (W.__toast) W.__toast('CSV 里找不到「客户名」列'); return; }
-        const map = { 当前阶段: 'stage', 下一步行动: 'next', 已完成动作: 'done', 负责人: 'owner', 计划跟进: 'planDate', 最近跟进: 'lastDate', 开发难点: 'difficulty', 预期合作方向: 'direction', 数据核实: 'verify' };
+        const map = { 当前阶段: 'stage', 下一步行动: 'next', 已完成动作: 'done', 负责人: 'owner', 计划跟进: 'planDate', 最近跟进: 'lastDate', 开发难点: 'difficulty', 预期合作方向: 'direction', 数据核实: 'verify', 备注: 'note' };
         const all = W.APP.customers;
         let hit = 0, miss = 0;
         rows.slice(1).forEach((r) => {
@@ -4393,7 +4518,14 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   W.PIPE_VIEW = viewPipe;
   W.PIPE_BIND = bindView;
-  W.PIPE = { DB: () => DB, STAGES, HEAD, scope: () => SCOPE, seg: () => SEGF, owner: () => OWNERF, charts: () => CHARTS, setCharts, rec, ck, touched, applyRemote, cloudOn, today, markSynced, pendOf, ownerOf };
+  W.PIPE = {
+    DB: () => DB, STAGES, HEAD, scope: () => SCOPE, seg: () => SEGF, owner: () => OWNERF, charts: () => CHARTS, setCharts,
+    rec, ck, touched, applyRemote, cloudOn, today, markSynced, pendOf, ownerOf,
+    // 抽屉里那四个可编辑字段走同一条写入通道：put() 负责 localStorage + 云端单字段推送
+    put,
+    // 抽屉改完让背后的表格/计数跟着更新，且保持滚动位置
+    refresh: rerenderKeepScroll,
+  };
 })(typeof window !== 'undefined' ? window : globalThis);
 
 /* ============================================================
@@ -4751,6 +4883,7 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     difficulty: 'difficulty',
     direction: 'direction',
     verify: 'verify',
+    note: 'note',
   };
   const BACK = {};
   Object.keys(COLS).forEach((k) => (BACK[COLS[k]] = k));

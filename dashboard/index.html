@@ -505,7 +505,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-06 17:14<span id="sub-extra"></span></div>
+      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-06 17:46<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -4614,10 +4614,11 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       busy = false;
       f.reset();
       if (f.elements.owner) f.elements.owner.value = who() || 'Evelyn';
-      msg('已保存：' + row.name + ' 已加入看板');
       ROWS = ROWS.filter((x) => x.id !== row.id).concat([row]);
       lastKey = '';
       rebuild();
+      // 提示要放在 rebuild 之后：重建会把表单整块换掉，先写就被冲没了
+      msg('已保存：' + row.name + ' 已加入看板');
       if (W.__toast) W.__toast('已加入看板：' + row.name);
     }).catch((err) => {
       busy = false;

@@ -155,6 +155,23 @@
 - 与原表重名的会被跳过（目前 11 家，如 Walmart / Vistek / Vidcom / Unique Photo / CompSource；按「跨两张表全局同名」判断，避免同一家同时出现在零售和代理两板），避免同名客户在跟进记录里串号。
 - **判定可追溯**：客户详情抽屉顶部有「分类依据」，写明是人工复核还是规则判定、依据哪个关键词。
 
+## 跟进进度导入（Evelyn 的进度表）
+
+Evelyn 用一份 Excel 记新增名单的触达情况（`Evelyn北美客户开发进度情况-*.xlsx`，列：国家 / 客户名 / 优先级 / 一句话简介 / 官网 / 覆盖区域 / 主要品类 / 当前阶段 / 已完成动作 / 下一步动作 / 负责人 / 计划跟进 / 最近跟进）。导入分两步：
+
+```bash
+python src/extract_evelyn.py "<进度表.xlsx>"   # 1) 映射成看板的记录 id → data/evelyn_sync.json
+python src/push_pipe.py                        # 2) 写进云端 pipe_records（页面刷新即见）
+```
+
+- **名字怎么认**：按「去引号 / 去标点 / & → and / 去公司尾缀」归一后比对，与 `build_v5.py` 的去重同口径；归一对不上的写进 `data/pipe_alias.json`（例如 `full compass` → `Full Compass Systems`、`Camera Corner` → `Camera Corner Connecting Point`、`Applied Electronics Edmonton` → `Applied Electronics`）。
+- **类型以看板为准**：进度表虽然叫「代理集成商」，里面也混着零售侧客户，所以 `ctype` 取看板自己的分类结果，不按 sheet 名走。
+- **同一个客户写了两行**（`Marco Bernard` / `Marco Bernard consultant`）：留「最近跟进」更晚的那条。
+- **不覆盖原表客户**：进度表里还有 16 家原本就在原表里的客户（Walmart、Vistek、Samy's Camera…），她表里多数停在「已建联」，而看板上这些已到「已合作·维护中」，直接覆盖等于把进度改回去，所以默认跳过，要覆盖加 `--all`。
+- **写入通道**：`/.cloud/database/rest/pipe_records` + 发布密钥 + 精确来源匹配的 Origin 头，与页面手填完全同构，所以不需要重新发布页面。
+
+2026-11-06 那次导入：进度表 700 行 → 680 条写进云端（612 代理 + 68 零售），16 条原表客户跳过，2 家（`Awevoke`、`Shure Incorporated`）看板上还没有。
+
 ## 目录
 
 ```

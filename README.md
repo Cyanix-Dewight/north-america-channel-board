@@ -51,6 +51,33 @@
 
 迁入的 7 家在「渠道角色」页补了明确判定（6 家 VAR·直销 + 1 家分销商），全部有依据原句，不再出现「待判断」。
 
+### 原表客户重分类（2026-11 第四版：零售侧残留的 B2B/B2C 混合一并迁代理）
+
+第三版之后零售侧还剩 4 家「B2B 与 B2C 混着做」的办公用品 / IT 平台，用户确认按**主要 2B** 一并迁到代理侧：
+
+| 客户 | 原来 | 现在 | 依据（简介原句） |
+|---|---|---|---|
+| Staples Canada | 零售 | 代理 | 「全渠道办公用品零售**、企业级物资统采**与商业科技外设服务商」——有门店，但企业统采是主线 |
+| Office Depot | 零售 | 代理 | 「全渠道办公用品零售巨头…**企业级办公解决方案提供商**」，B2B 占比高 |
+| OfficeSupply.com | 零售 | 代理 | 「**B2B/B2C** 办公用品…线上零售/分销平台」，B2B 在前、走分销供货 |
+| PC-Canada | 零售 | 代理 | 「专业 **B2B/B2C** 计算机 IT 外设、办公科技与 Pro AV 垂直电商平台」 |
+
+这 4 家同样在「渠道角色」页补了判定（VAR·直销），云端跟进记录的主键已改为 `agent|…` 前缀，阶段与负责人不变。
+
+最终：零售商 **123** 家、代理集成商 **680** 家（合计 803 家）。
+
+### 原表重复录入的删除
+
+`JB&A Distribution` 与 `Central Computer` 是同一家被录了两次、且两条都在同一张表里，属于纯重复录入（不是搬家）。用户确认保留信息更全的那条，另一条从看板整条移除，清单登记在 `data/base_drop.json`：
+
+| 删除 | 保留 | 为什么 |
+|---|---|---|
+| JB&A Distribution（代理） | JB&A (Exertis Broadcast)（代理） | 同一家（Exertis 收购后 Novato / San Rafael 同一实体）；保留那条简介还写了 IP/NDI 流媒体与现场制作 |
+| Central Computer（零售） | Central Computers（零售） | 同一家湾区连锁（同城 Santa Clara），前者是漏写 s 的重复录入 |
+
+- 两条被删记录的云端行（`agent|JB&ADistribution`、`retailer|CentralComputer`）已一并删除；保留的那两条本来就有记录，且阶段 / 负责人一致，**不丢进度**。
+- 删除只影响看板呈现，`data/source_latest.json` 原始数据不动，随时可在 `base_drop.json` 里撤回。
+
 ### 重复客户去重
 
 原表有 125 家、新增名单 689 家，两边同一家公司写法常常差一点，所以去重分两层：
@@ -61,7 +88,7 @@
 
 本轮人工确认 7 条：`Samy‘s Camera`、`Excellent Photo`、`full compass`、`JB&A`、`Applied Electronics Edmonton`、`Camera Corner`、`Marco Bernard consultant`（后两条是新增名单内部的自我重复）。合计跳过 18 家。
 
-> 仍保留的「同集团不同区域实体」：`Staples` / `Staples Canada`、`CDW` / `CDW (Canada)`、`Softchoice` / `Softchoice CA`、`Insight US` / `Insight CA`、`AVI-SPL` / `AVI-SPL Canada`、`JB&A (Exertis Broadcast)` / `JB&A Distribution`、`Central Computer` / `Central Computers`。这些在原表里就是分开评分的两条记录，没有合并；要合并请说一声。
+> 仍保留的「同集团不同区域实体」：`Staples` / `Staples Canada`、`CDW` / `CDW (Canada)`、`Softchoice` / `Softchoice CA`、`Insight US` / `Insight CA`、`AVI-SPL` / `AVI-SPL Canada`。这些在原表里就是分开评分的两条记录，没有合并；要合并请说一声。（`JB&A` 与 `Central Computer` 两组已按用户判定合并，见上「原表重复录入的删除」。）
 
 ### 原表客户重分类（2026-11 第二版）
 
@@ -79,7 +106,7 @@
 - **字段映射**：两表结构不同，搬迁时 `覆盖范围↔覆盖区域`、`头部竞品品牌体量↔合作竞品`、`Webcam体量↔相关产品线体量` 互转；目标表没有的字段（门店数、是否在售 webcam、主要品类、是否代理竞品）原文写进备注，**不丢数据**。
 - **门店数不会被填 0**：代理表没有门店列，搬过来的行门店数为空（未知），不是 0。
 - **跟进记录跟着迁**：记录主键是 `类型|客户名`，搬迁后已在云端把 10 条记录的 id 改成新前缀（`retailer|IntcomexUS` → `agent|IntcomexUS`），记录数与字段不变。
-- **仍是零售侧的 B2B 平台**：Staples Business Advantage、Quill、Newegg Business、OfficeSupply.com、OfficeMax Grand & Toy、WB Mason、Provantage、Direct Dial、A5 IT、Cloudtechmart 含 B2B，但身份名词是电商/采购平台，按口径留在零售侧；需要改的话在 `base_reclass.json` 加一条即可。
+- **B2C 为主的电商不搬**：简介只写「垂直电商 / 线上零售」、没有企业采购或分销供货含义的（例如 CompGiant、CompSource、Computer Deals Direct、GoElectronic），即使提到 B2B 也留在零售侧。
 
 ### 目标行业维度（2026-11 新增）
 

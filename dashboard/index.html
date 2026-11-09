@@ -425,6 +425,7 @@ select.cellin:hover{border-color:var(--line);background:#fff}
 .maptip.pin{pointer-events:auto}
 .maptip .tt-h{font-weight:650;font-size:12px;margin-bottom:3px}
 .maptip .tt-sub{color:#C7D0DD;font-size:10.5px;margin-bottom:6px}
+.maptip .tt-sub.warn{color:#F5B45A;margin-bottom:5px}
 .maptip .tt-row{display:flex;align-items:center;gap:6px;padding:2.5px 0;border-top:1px solid rgba(255,255,255,.1);cursor:pointer}
 .maptip .tt-row:hover{color:#93C5FD}
 .maptip .tt-row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -435,6 +436,14 @@ select.cellin:hover{border-color:var(--line);background:#fff}
 .map-legend .lg{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink-3)}
 .map-legend .sw{width:14px;height:9px;border-radius:2px;border:1px solid rgba(15,23,41,.08)}
 .map-legend .dt2{width:8px;height:8px;border-radius:50%;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(15,23,41,.18)}
+/* 空心 = 仅定位到州/省（位置是州几何中心，不是真实总部） */
+.map-legend .dt2.hollow{background:#fff;border:1.4px dashed #667085;box-shadow:none}
+.map-svg .mdot.hollow:hover circle{stroke-width:2.2}
+.map-svg .mlabel.sub{fill:#8494A8;font-weight:500}
+.locdet{margin-top:9px;font-size:11px;color:var(--ink-3)}
+.locdet>summary{cursor:pointer;font-weight:600;color:var(--ink-2);padding:3px 0}
+.locdet>summary:hover{color:var(--brand)}
+.locate-list{margin-top:5px;max-height:132px;overflow:auto;line-height:1.75;padding-right:4px}
 
 .map-side .card+.card{margin-top:12px}
 .dens-row{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line-2);font-size:11.5px}
@@ -533,7 +542,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-06 18:17<span id="sub-extra"></span></div>
+      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-09 14:48<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -2115,14 +2124,18 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     if (hit) {
       return { ok: true, country, state: hit[2], city: cityRaw, lat: hit[0], lon: hit[1], precision: 'city', raw: seg };
     }
+    /* 城市查不到时不要把 cleanCity 的片段当成城市名 —— 简介里常出现
+       「主营面向全美」「采用全远程模式」「覆盖纽约-宾州」这类描述，一旦写进 city，
+       地图就会把它印成城市标签，位置还落在州几何中心。原文片段只留在 rawCity，
+       供鼠标悬停追溯，不参与任何标签渲染。 */
     if (stKey && PROV_CENTER[stKey]) {
       const c = PROV_CENTER[stKey];
-      return { ok: true, country, state: stKey, city: '', lat: c[0], lon: c[1], precision: 'province', raw: seg };
+      return { ok: true, country, state: stKey, city: '', rawCity: cityRaw, lat: c[0], lon: c[1], precision: 'province', raw: seg };
     }
     if (stKey) {
-      return { ok: false, country, state: stKey, city: cityRaw, reason: 'city-not-found', raw: seg };
+      return { ok: false, country, state: stKey, city: '', rawCity: cityRaw, reason: 'city-not-found', raw: seg };
     }
-    return { ok: false, country, state: null, city: cityRaw, reason: 'no-state', raw: seg };
+    return { ok: false, country, state: null, city: '', rawCity: cityRaw, reason: 'no-state', raw: seg };
   }
 
   // 美国州中心兜底（城市识别不到时用）
@@ -2153,7 +2166,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       c.hq = parseHQ(c.intro);
       if (c.hq && !c.hq.ok && STATE_CENTER[c.hq.state]) {
         const s = STATE_CENTER[c.hq.state];
-        c.hq = Object.assign({}, c.hq, { ok: true, lat: s[0], lon: s[1], city: c.hq.city || '', precision: 'state' });
+        // 精度降级为 state：坐标是美国州几何中心，不是真实总部位置；city 保持为空
+        c.hq = Object.assign({}, c.hq, { ok: true, lat: s[0], lon: s[1], city: '', precision: 'state' });
       }
     });
   }
@@ -3122,6 +3136,11 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 <script>/* ============================================================
    views_map.js — 总部地理分布（气泡 = 都市圈，底色 = 州/省客户数）
    依赖 geodata.js 提供的 project / CITY / STATE_CN / PROV_CN
+
+   三种定位精度分开呈现（不再混为一谈）：
+     city      真实城市 → 实心圆 + 城市名
+     province  只解析到省 → 空心虚线圆 + 「XX（省级）」，位置为省几何中心
+     state     只解析到州 → 空心虚线圆 + 「XX（州级）」，位置为州几何中心
    ============================================================ */
 (function (W) {
   'use strict';
@@ -3133,8 +3152,41 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   const R_COLOR = { P1: C.p1, P2: C.p2, P3: C.p3 };
   const MERGE_R = 9;
+  const P_ORDER = { P1: 0, P2: 1, P3: 2 };
 
   function hqOf(c) { return c.hq && c.hq.ok ? c.hq : null; }
+
+  /* 州/省英文名 → 中文规范名（去掉「州 / 省」后缀，用于地图标签）。
+     同一个英文名可能对应多个中文写法（加州 / 加利福尼亚州），取最长的那个作规范名 ——
+     只按「是否带州/省后缀」判断会把简称「加州」当成规范名，标签上就剩一个「加」字。 */
+  let CN_DICT = null;
+  function cnDict() {
+    if (CN_DICT) return CN_DICT;
+    const g = W.APP.geo, m = {};
+    [g.STATE_CN, g.PROV_CN].forEach((dict) => {
+      Object.keys(dict).forEach((cn) => {
+        const en = dict[cn];
+        if (!m[en] || cn.length > m[en].length) m[en] = cn;
+      });
+    });
+    Object.keys(m).forEach((en) => { m[en] = m[en].replace(/[州省]$/, ''); });
+    CN_DICT = m;
+    return m;
+  }
+  function cnPlace(en) {
+    if (!en) return '';
+    const m = cnDict();
+    return m[en] || en;
+  }
+
+  /* 标签实际宽度：CJK 约等于字号全宽，拉丁字母约一半。
+     之前一律按 6.6px/字 估算，中文被低估约 24%，避让算法因此形同虚设 → 标签互相压字。
+     这里再留一点余量，因为标签带 2.4px 白色描边（paint-order:stroke），实际占位比 getBBox 略宽。 */
+  function textW(s) {
+    let w = 0;
+    String(s || '').split('').forEach((ch) => { w += ch.charCodeAt(0) > 255 ? 9.2 : 5.4; });
+    return w + 3;
+  }
 
   function cluster(list) {
     const pts = list.filter(hqOf).map((c) => {
@@ -3145,8 +3197,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     pts.forEach((p) => {
       let hit = null;
       for (const cl of clusters) {
-        const d = Math.hypot(cl.x - p.x, cl.y - p.y);
-        if (d < MERGE_R) { hit = cl; break; }
+        if (Math.hypot(cl.x - p.x, cl.y - p.y) < MERGE_R) { hit = cl; break; }
       }
       if (hit) {
         hit.items.push(p.c);
@@ -3156,32 +3207,78 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         clusters.push({ x: p.x, y: p.y, items: [p.c] });
       }
     });
-    // 按 P 码决定主色（取组内最高优先级）
+
     clusters.forEach((cl) => {
-      const order = { P1: 0, P2: 1, P3: 2 };
-      cl.items.sort((a, b) => (order[a.p] ?? 9) - (order[b.p] ?? 9));
+      cl.items.sort((a, b) => (P_ORDER[a.p] ?? 9) - (P_ORDER[b.p] ?? 9));
       cl.top = cl.items[0];
       cl.color = R_COLOR[cl.top.p] || C.gray;
-      cl.label = cl.top.hq.city || cl.top.hq.state || cl.top.name;
-      cl.r = Math.min(13, 4.4 + Math.sqrt(cl.items.length) * 2.5);
+
+      /* 组里只要有一个点精确到城市，这一处的位置就是真城市；
+         全是州/省兜底点时才降级显示为空心圆。 */
+      cl.prec = cl.items.some((c) => c.hq.precision === 'city') ? 'city'
+        : cl.items.some((c) => c.hq.precision === 'province') ? 'province' : 'state';
+
+      const cnt = {};
+      cl.cities = [];
+      cl.items.forEach((c) => {
+        const city = c.hq.city;
+        if (!city) return;
+        if (cl.cities.indexOf(city) < 0) cl.cities.push(city);
+        cnt[city] = (cnt[city] || 0) + 1;
+      });
+      cl.cityMain = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a])[0] || '';
+
+      cl.r = Math.min(13, 4.4 + Math.sqrt(cl.items.length) * 2.5) * (cl.prec === 'city' ? 1 : 0.88);
+
+      /* 标签：合并了多个城市的大簇不能只用其中一个客户的城市名 —— 纽约都市圈曾被叫成「法明代尔」。 */
+      if (cl.prec === 'city') {
+        cl.label = cl.cities.length > 1
+          ? cl.cityMain + '一带'
+          : (cl.cityMain || cnPlace(cl.top.hq.state));
+        if (cl.cities.length > 1) cl.labelNote = '含 ' + cl.cities.length + ' 处：' + cl.cities.slice(0, 3).join('、') + (cl.cities.length > 3 ? ' 等' : '');
+      } else {
+        const pn = cnPlace(cl.top.hq.state);
+        cl.label = pn + (cl.prec === 'province' ? '（省）' : '（州）');
+        cl.labelNote = '仅解析到' + (cl.prec === 'province' ? '省' : '州') + '，气泡落在' + (cl.prec === 'province' ? '省' : '州') + '几何中心';
+      }
     });
     return clusters;
   }
 
-  function labelBoxes(clusters) {
+  /* 标签避让：按真实宽度试 12 个方位，都放不下就不标（悬停仍可看）。
+     宁可少标几个，也不能叠成一坨 —— 完整清单在右侧「都市圈 Top」。 */
+  const CANDS = [
+    [0, -1], [1, -0.55], [-1, -0.55], [1, 0.55], [-1, 0.55], [0, 1],
+    [0.85, -1.15], [-0.85, -1.15], [1.25, 0], [-1.25, 0], [0, -1.9], [0, 1.9],
+  ];
+  function placeLabels(cls, VW, VH) {
     const placed = [];
-    clusters.sort((a, b) => b.items.length - a.items.length).forEach((cl) => {
-      const cands = [[0, -1], [1, -0.35], [1, 0.6], [-1, -0.35], [-1, 0.6], [0, 1.25], [0.9, -1.5], [-0.9, -1.5]];
-      for (const [dx, dy] of cands) {
-        const w = Math.max(30, cl.label.length * 6.6);
-        const x = cl.x + dx * (cl.r + 4) - (dx < 0 ? w : 0);
-        const y = cl.y + dy * (cl.r + 12) - 8;
-        const box = { x, y, w, h: 12 };
+    const rank = (c) => (c.prec === 'city' ? 0 : 1);
+    const order = cls.slice().sort((a, b) => rank(a) - rank(b) || b.items.length - a.items.length);
+    order.forEach((cl) => {
+      const w = textW(cl.label), h = 11, pad = 2.2;
+      for (const [dx, dy] of CANDS) {
+        const ax = cl.x + dx * (cl.r + 3.5);
+        // 放在气泡下方时要多留一点：文字基线在 ay，字形实际向上占 7.2px，不然会压到自己的圆
+        const ay = cl.y + dy * (cl.r + (dy > 0 ? 11 : 8.5));
+        const anchor = dx > 0.25 ? 'start' : dx < -0.25 ? 'end' : 'middle';
+        const left = anchor === 'start' ? ax : anchor === 'end' ? ax - w : ax - w / 2;
+        const box = { x: left - pad, y: ay - 7.2 - pad, w: w + pad * 2, h: h + pad * 2 };
+        if (box.x < 2 || box.x + box.w > VW - 2 || box.y < 2 || box.y + box.h > VH - 2) continue;
+        /* 撞已放好的标签，或压到别的气泡（按矩形到圆心的最近距离算，不能只看锚点距离） */
         const clash = placed.some((b) => !(box.x + box.w < b.x || box.x > b.x + b.w || box.y + box.h < b.y || box.y > b.y + b.h))
-          || clusters.some((o) => o !== cl && Math.hypot(o.x - (box.x + w / 2), o.y - (box.y + 6)) < o.r + 7);
-        if (!clash) { placed.push(box); cl.lx = box.x + w / 2; cl.ly = box.y + 6; cl.anchor = 'middle'; return; }
+          || cls.some((o) => {
+            if (o === cl) return false;
+            const nx = Math.max(box.x, Math.min(o.x, box.x + box.w));
+            const ny = Math.max(box.y, Math.min(o.y, box.y + box.h));
+            return Math.hypot(nx - o.x, ny - o.y) < o.r + 2;
+          });
+        if (clash) continue;
+        placed.push(box);
+        cl.lx = ax; cl.ly = ay; cl.anchor = anchor; cl.hide = false;
+        return;
       }
-      cl.lx = cl.x; cl.ly = cl.y - cl.r - 5;
+      cl.hide = true;
     });
   }
 
@@ -3200,43 +3297,53 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     return '#F2F4F7';
   }
 
+  let CL_CACHE = null;
+
   function view(list) {
     const GEO = W.APP.geo.GEO;
     const sCount = stateCounts(list);
     const cl = cluster(list);
-    labelBoxes(cl);
+    placeLabels(cl, GEO.w, GEO.h);
+    CL_CACHE = cl;
+
     const located = list.filter(hqOf).length;
     const missing = list.filter((c) => !hqOf(c));
+    const nCity = list.filter((c) => hqOf(c) && c.hq.precision === 'city').length;
+    const nProv = list.filter((c) => hqOf(c) && c.hq.precision === 'province').length;
+    const nState = list.filter((c) => hqOf(c) && c.hq.precision === 'state').length;
 
     const land = GEO.features.map((f) => {
       const n = sCount[f.n] || 0;
       return `<path class="land" d="${f.d}" fill="${binColor(n)}" data-st="${esc(f.n)}"><title>${esc(f.n)}：${n} 家</title></path>`;
     }).join('');
 
-    const bubbles = cl.map((c) => `<g class="mdot" data-cl="${esc(c.label)}">
-        <title>${esc(c.label)}：${c.items.length} 家</title>
-        <circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${c.r.toFixed(1)}" fill="${c.color}" fill-opacity=".92" stroke="#fff" stroke-width="1.1"/>
-        ${c.items.length > 1 ? `<text x="${c.x.toFixed(1)}" y="${(c.y + 2.9).toFixed(1)}" text-anchor="middle" style="font-size:8px;font-weight:700;fill:#fff">${c.items.length}</text>` : ''}
-      </g>`).join('');
+    const bubbles = cl.map((c, i) => {
+      const hollow = c.prec !== 'city';
+      const dot = hollow
+        ? `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${c.r.toFixed(1)}" fill="#fff" fill-opacity=".96" stroke="${c.color}" stroke-width="1.6" stroke-dasharray="2.6 1.9"/>`
+          + (c.items.length <= 1 ? `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="1.7" fill="${c.color}"/>` : '')
+        : `<circle cx="${c.x.toFixed(1)}" cy="${c.y.toFixed(1)}" r="${c.r.toFixed(1)}" fill="${c.color}" fill-opacity=".92" stroke="#fff" stroke-width="1.1"/>`;
+      const num = c.items.length > 1
+        ? `<text x="${c.x.toFixed(1)}" y="${(c.y + 2.9).toFixed(1)}" text-anchor="middle" style="font-size:8px;font-weight:700;fill:${hollow ? c.color : '#fff'}">${c.items.length}</text>`
+        : '';
+      return `<g class="mdot${hollow ? ' hollow' : ''}" data-ci="${i}"><title>${esc(c.label)}：${c.items.length} 家${hollow ? '（' + (c.prec === 'province' ? '仅到省' : '仅到州') + '）' : ''}</title>${dot}${num}</g>`;
+    }).join('');
 
-    const labels = cl.map((c) => `<text class="mlabel" x="${c.lx.toFixed(1)}" y="${c.ly.toFixed(1)}" text-anchor="${c.anchor || 'middle'}">${esc(c.label)}</text>`).join('');
+    const labels = cl.filter((c) => !c.hide).map((c) => `<text class="mlabel${c.prec !== 'city' ? ' sub' : ''}" x="${c.lx.toFixed(1)}" y="${c.ly.toFixed(1)}" text-anchor="${c.anchor || 'middle'}">${esc(c.label)}</text>`).join('');
 
     // 侧栏：州/省排行
     const ranks = Object.entries(sCount).sort((a, b) => b[1] - a[1]).slice(0, 9);
     const maxN = ranks.length ? ranks[0][1] : 1;
-    const cnName = (k) => {
-      const m = Object.entries(W.APP.geo.STATE_CN).find(([, v]) => v === k)
-        || Object.entries(W.APP.geo.PROV_CN).find(([, v]) => v === k);
-      return m ? m[0].replace(/省$|州$/, '') : k;
-    };
     const rankRows = ranks.map(([k, v]) => `<div class="dens-row">
-        <span class="nm" title="${esc(k)}">${esc(cnName(k))}</span>
+        <span class="nm" title="${esc(k)}">${esc(cnPlace(k))}</span>
         <span class="bar"><i style="width:${(v / maxN) * 100}%;background:${C.brand}"></i></span>
         <span class="n">${v}</span></div>`).join('');
 
-    const cityRanks = cl.slice().sort((a, b) => b.items.length - a.items.length).slice(0, 6).map((c) => `<div class="dens-row">
-        <span class="nm" title="${esc(c.label)}">${esc(c.label)}</span>
-        <span class="bar"><i style="width:${(c.items.length / cl[0].items.length) * 100}%;background:${c.color}"></i></span>
+    const bySize = cl.slice().sort((a, b) => b.items.length - a.items.length);
+    const maxC = bySize.length ? bySize[0].items.length : 1;
+    const cityRanks = bySize.slice(0, 6).map((c) => `<div class="dens-row">
+        <span class="nm" title="${esc(c.labelNote || c.label)}">${esc(c.label)}</span>
+        <span class="bar"><i style="width:${(c.items.length / maxC) * 100}%;background:${c.prec === 'city' ? c.color : '#93A2B5'}"></i></span>
         <span class="n">${c.items.length}</span></div>`).join('');
 
     const legendZones = [{ label: '7+ 家', color: '#B42318' }, { label: '4–6 家', color: '#DC6803' }, { label: '2–3 家', color: '#F79009' }, { label: '1 家', color: '#FDE68A' }, { label: '0', color: '#F2F4F7' }];
@@ -3245,16 +3352,24 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="map-grid">
       <div class="card map-card">
         <div class="card-h"><h3>${IS_R ? '零售商' : '代理集成商'}总部分布</h3>
-          <span class="hint">气泡 = 都市圈（半径随家数）· 底色 = 州/省客户数 · 悬停看明细</span></div>
+          <span class="hint">气泡 = 都市圈（半径随家数）· 实心 = 精确到城市，空心 = 只到州/省 · 底色 = 州/省客户数 · 悬停看明细</span></div>
         <div style="padding:10px 12px 0">
           <svg class="map-svg" viewBox="0 0 ${GEO.w} ${GEO.h}" id="na-map">
+            <defs>
+              <linearGradient id="mapFadeTop" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#FBFCFE" stop-opacity=".97"/>
+                <stop offset="1" stop-color="#FBFCFE" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
             ${land}
             ${bubbles}
             ${labels}
+            <rect x="0" y="0" width="${GEO.w}" height="20" fill="url(#mapFadeTop)" pointer-events="none"/>
           </svg>
         </div>
         <div class="map-legend">
           ${legendZones.map((l) => `<span class="lg"><span class="sw" style="background:${l.color}"></span>${l.label}</span>`).join('')}
+          <span class="lg"><span class="dt2 hollow"></span>空心 = 仅定位到州 / 省</span>
           <span class="lg" style="margin-left:auto"><span class="dt2" style="background:${C.p1}"></span>P1</span>
           <span class="lg"><span class="dt2" style="background:${C.p2}"></span>P2</span>
           <span class="lg"><span class="dt2" style="background:${C.p3}"></span>P3</span>
@@ -3263,13 +3378,20 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       <div class="map-side">
         <div class="card"><div class="card-h"><h3>区域集中度</h3></div>
           <div class="card-b">${rankRows || '<div class="empty">无数据</div>'}</div></div>
-        <div class="card"><div class="card-h"><h3>都市圈 Top</h3></div>
+        <div class="card"><div class="card-h"><h3>都市圈 Top</h3><span class="hint">灰色条 = 仅到州/省</span></div>
           <div class="card-b">${cityRanks || '<div class="empty">无数据</div>'}</div></div>
         <div class="card"><div class="card-h"><h3>定位覆盖</h3></div>
           <div class="card-b">
-            <div class="kv"><dt>已定位</dt><dd>${located} / ${list.length}（${pctf(located, list.length)}%）</dd>
-            <dt>未定位</dt><dd>${missing.length} 家${missing.length ? '：' + missing.slice(0, 4).map((c) => esc(c.name)).join('、') : ''}</dd></div>
-            <div class="note" style="margin-top:8px">总部经纬度由「一句话简介」中的总部描述解析；解析不到就标「未定位」，不猜测。</div>
+            <div class="kv">
+              <dt>已定位</dt><dd>${located} / ${list.length}（${pctf(located, list.length)}%）</dd>
+              <dt>精确到城市</dt><dd>${nCity} 家</dd>
+              <dt>仅到州</dt><dd>${nState} 家<span class="mini muted"> · 气泡在州几何中心</span></dd>
+              ${nProv ? `<dt>仅到省</dt><dd>${nProv} 家<span class="mini muted"> · 气泡在省几何中心</span></dd>` : ''}
+              <dt>未定位</dt><dd>${missing.length} 家</dd>
+            </div>
+            ${missing.length ? `<details class="locdet"><summary>未定位的 ${missing.length} 家（简介里没写总部，按规则不猜）</summary>
+              <div class="locate-list">${missing.map((c) => esc(c.name)).join('、')}</div></details>` : ''}
+            <div class="note" style="margin-top:8px">总部经纬度由「一句话简介」中的总部描述解析。<b>空心圆</b>表示只解析到州或省，位置取该州/省的几何中心，<b>不是真实总部坐标</b>；解析不到就标「未定位」，不猜测。</div>
           </div></div>
       </div>
     </div>
@@ -3280,10 +3402,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const tip = document.getElementById('maptip');
     const map = document.getElementById('na-map');
     if (!tip || !map) return;
-    const cl = cluster(list);
-    cl.forEach((c) => (c.label2 = c.label));
-    const byLabel = {};
-    cluster(list).forEach((c) => (byLabel[c.label] = c));
+    const cl = (CL_CACHE && CL_CACHE.length) ? CL_CACHE : cluster(list);
 
     const show = (evt, html) => {
       tip.innerHTML = html;
@@ -3295,12 +3414,15 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     };
     const hide = () => tip.classList.remove('on');
 
-    map.querySelectorAll('[data-cl]').forEach((g) => {
+    map.querySelectorAll('[data-ci]').forEach((g) => {
       g.addEventListener('mousemove', (e) => {
-        const c = byLabel[g.dataset.cl];
+        const c = cl[Number(g.dataset.ci)];
         if (!c) return;
         const rows = c.items.slice(0, 6).map((it) => `<div class="tt-row" data-id="${it.id}"><span class="nm">${CORE.esc(it.name)}</span><span class="sc">${it.p || ''}</span></div>`).join('');
-        show(e, `<div class="tt-h">${CORE.esc(c.label)}</div><div class="tt-sub">${c.items.length} 家${c.items.length > 6 ? '（前 6 家）' : ''}</div>${rows}<div class="tt-hint">点击客户名查看详情</div>`);
+        const note = c.prec === 'city'
+          ? (c.labelNote ? `<div class="tt-sub">${CORE.esc(c.labelNote)}</div>` : '')
+          : `<div class="tt-sub warn">仅解析到${c.prec === 'province' ? '省' : '州'} · 气泡在${c.prec === 'province' ? '省' : '州'}几何中心，不是真实总部</div>`;
+        show(e, `<div class="tt-h">${CORE.esc(c.label)}</div><div class="tt-sub">${c.items.length} 家${c.items.length > 6 ? '（前 6 家）' : ''}</div>${note}${rows}<div class="tt-hint">点击客户名查看详情</div>`);
       });
       g.addEventListener('mouseleave', hide);
       g.addEventListener('click', (e) => {

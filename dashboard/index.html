@@ -542,7 +542,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>北美渠道总看板</h1>
-      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-09 14:48<span id="sub-extra"></span></div>
+      <div class="sub">零售商 123 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 构建于 2026-11-09 14:59<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：北美渠道客户整理 (5).xlsx</span>
@@ -1915,6 +1915,13 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       cadN: APP.customers.filter((c) => c.mny && c.mny.cur === 'CAD').length,
       noMoneyN: APP.noMoney.length,
     };
+
+    /* 每次重建都要重新挂总部经纬度。
+       geodata.js 的 attachHQ 只对「当时那批客户对象」生效，而下面这些路径都会整批重建客户对象：
+       云端拉回手工录入客户（entry.js → build）、新客户池合并、重跑数据。
+       不重挂的话 c.hq 全丢 —— 线上地图会一个点都没有（只有州底色），2026-11-09 踩过一次。
+       geodata.js 晚于本文件加载，首轮 build 时还没有 APP.geo，加守卫跳过（由 shell 的 boot 补一次）。 */
+    if (global.APP.geo && global.APP.geo.attachHQ) global.APP.geo.attachHQ();
   }
 
   APP.build = build;
@@ -3300,6 +3307,12 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   let CL_CACHE = null;
 
   function view(list) {
+    /* 兜底自愈：任何绕过 model.build() 的重建（或先渲染后挂载的顺序问题）都会让客户没有 hq，
+       地图会退化成只剩州底色。这里只要发现整批客户都没挂过，就补挂一次。 */
+    if (APP.customers && APP.customers.length && !APP.customers.some((c) => c.hq)
+      && W.APP.geo && W.APP.geo.attachHQ) {
+      W.APP.geo.attachHQ();
+    }
     const GEO = W.APP.geo.GEO;
     const sCount = stateCounts(list);
     const cl = cluster(list);

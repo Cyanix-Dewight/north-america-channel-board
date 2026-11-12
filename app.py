@@ -11,7 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 st.set_page_config(
-    page_title="北美渠道总看板",
+    page_title="全球渠道总看板",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="collapsed",

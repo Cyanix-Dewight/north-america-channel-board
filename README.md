@@ -1,7 +1,10 @@
-# 北美渠道总看板 · North America Channel Board
+# 全球渠道总看板 · Global Channel Board
 
 零售商与代理/集成商的渠道开发看板，单文件离线 HTML + Streamlit 外壳。
-数据源：`北美渠道客户整理 (6).xlsx`（零售商 65 家 / 代理集成商 60 家 / 竞品格局 47 条）。
+数据源：`北美渠道客户整理 (6).xlsx` 主表 + `北美客户新增.xlsx` 新增名单 + `data/global_add.json` 全球新增（欧洲）。
+
+> 2026-11 起从「北美」升级为**全球**：底图换世界国界，客户按大区（北美 / 欧洲 / 亚太 / 拉美 / 中东非）归类，
+> 币种支持 EUR / DKK / GBP / SEK / NOK / JPY。文件名同步改为 `全球渠道总看板.html`。
 
 ## 访问地址
 
@@ -25,7 +28,7 @@
 | 体量分析 | 统一美元口径的体量排行、加元折算明细、体量 × 竞品 SKU 散点 |
 | 竞品与入驻预判 / P 码判定与校准 | 零售商侧看 OBSBOT 产品落位建议；代理侧看三因子判定与原表校准 |
 | 渠道角色 | 代理侧专有：按「一句话简介」原文把 60 家分成分销商（14）/ 代理商（46，含厂方代表、VAR·直销、系统集成商），逐家列出判断依据原句 |
-| 总部地图 | 北美总部位置与密度（实心 = 精确到城市，空心 = 只到州/省） |
+| 总部地图 | **世界地图**：底色 = 该国客户数；默认按大区聚合（世界视图），点大区下钻到都市圈；实心 = 精确到城市，空心 = 只到州/省/国家 |
 | 客户主表 | 全字段表格（含目标行业列）+ 排序 + CSV 导出 |
 | 方法与口径 | 每一步算法与数据口径，可复核 |
 
@@ -177,6 +180,42 @@
 - 与原表重名的会被跳过（目前 11 家，如 Walmart / Vistek / Vidcom / Unique Photo / CompSource；按「跨两张表全局同名」判断，避免同一家同时出现在零售和代理两板），避免同名客户在跟进记录里串号。
 - **判定可追溯**：客户详情抽屉顶部有「分类依据」，写明是人工复核还是规则判定、依据哪个关键词。
 
+## 全球新增客户（北美以外）
+
+北美以外的客户不进 `source_latest.json`（那是 `update.py` 从原始 xlsx 重跑出来的，会整份覆盖），
+单独维护在 `data/global_add.json`，构建时由 `build_v5.py` 的 `merge_global()` 并入零售商表。
+
+- **当前内容**：德国 Media Markt、丹麦 Proshop、丹麦 Bilka（来源 `看板更新.xlsx`）。
+- **国家口径**：源表里 Proshop / Bilka 的「国家」列写的是 `Nordic`，不是标准国家码。
+  按两家简介里写明的「丹麦奥胡斯」「丹麦布拉布兰」归档为 `DK`；原文 `Nordic` 记在
+  `global_add.json` 的 `_countryNote` 里备查，不改写原文。
+- **细分标签**：`merge_global()` 会像新增名单一样跑一遍 `classify()`，所以这两批客户在跟进页的
+  细分筛选里表现一致，不会因为来源不同而少一档。
+- **列对不齐的地方**：源表 15 列，比零售表少一列「头部竞品品牌」（只有品牌体量、没有品牌名清单），
+  该列留空，**不代填**。
+- **要加新的地区**：往 `global_add.json` 的 `rows` 里按同一套键追加即可（键名用零售表列名），
+  国家列写 ISO 码；然后 `python build_v5.py && python publish.py`。
+
+## 批量导入客户（上传表格）
+
+「客户录入」页第二张卡片：上传 `.xlsx` / `.csv`，**在本机浏览器里解析**，不上传文件、不引第三方库。
+
+1. **解析**：xlsx 用 zip 中央目录 + `DecompressionStream('deflate-raw')` 解压，再用 `DOMParser` 读
+   `sharedStrings.xml` / `sheet1.xml`；csv 支持引号内的逗号换行、BOM、CRLF，分隔符自动识别（逗号/制表符/分号）。
+2. **认列**：表头按别名归一（`覆盖范围` / `覆盖区域` 同义，`Webcam体量（可推测/预估）` 全半角括号都认），
+   认不出的列忽略，缺列不影响。
+3. **校验**：缺客户名 → 不可导入；与看板已有客户**同名**（按名字判，不分零售商/代理）或本次上传内部重复 →
+   判重复、默认不勾选并写明原因；官网格式不合法、国家认不出 → 标黄提示但仍可导入。
+4. **写入**：逐条 upsert 到云端 `customers_extra`，带进度提示与失败清单；写完立刻重建客户列表，
+   总览 / 主表 / 跟进表 / 地图同时出现。
+5. **带上的字段**：体量、门店数量、头部竞品品牌体量、Webcam体量、是否在合作、是否建联 →
+   存进 `customers_extra` 的同名扩展列，`model.js` 的 `extraRow()` 再按源表列名回填，
+   所以导入的客户照样参与体量分档与 SKU 统计，不会停在「未量化」。
+
+代码位置：`src/entry.js`（`readXlsx` / `parseCsv` / `toRecords` / `validate` / `payloadOf` / `onImport`）。
+云端扩展列（2026-11 新增，`ALTER TABLE` 已执行）：`scale_text` `comp_raw` `webcam_vol` `store_raw`
+`has_store` `webcam_on` `coop` `contact` `extra`。
+
 ## 手工录入新客户（「客户录入」页）
 
 源表之外，同事可以直接在页面里加新客户：顶部页签「客户录入」→ 填表 → 点「保存并加入看板」，**立刻写进云端**，别人 6 秒内刷到。
@@ -303,7 +342,7 @@ python update.py --rollback
 ### 重建与发布命令
 
 ```bash
-python build_v5.py       # 生成 北美渠道总看板.html
+python build_v5.py       # 生成 全球渠道总看板.html
 python publish.py        # 同步到 site/、dashboard/、docs/ 三份副本
 # 1) 共享版（能同步）
 #    workbuddy_sites_deploy → directory=site, appId=wbapp_AGkoQ4nhcy53ZjRenRni7X

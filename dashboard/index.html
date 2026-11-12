@@ -450,6 +450,21 @@ select.cellin:hover{border-color:var(--line);background:#fff}
 .mapz .mz.on i{opacity:.95}
 .map-svg .mdot.rz{cursor:zoom-in}
 .map-svg .mdot.hollow{cursor:pointer}
+
+/* 地图拖动 / 缩放：grab 光标 + 触屏交给指针事件自己处理（不然滚动手势被浏览器吃掉） */
+.mapwrap{position:relative}
+.map-svg{cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none}
+.map-svg.grabbing{cursor:grabbing}
+.map-svg.dragging .land{pointer-events:none}
+.mapzoom{position:absolute;right:10px;top:10px;display:flex;gap:4px;align-items:center;background:rgba(255,255,255,.95);border:1px solid var(--line);border-radius:8px;padding:3px 5px;box-shadow:0 1px 3px rgba(15,23,41,.09)}
+.mapzoom button{height:22px;min-width:22px;padding:0 5px;line-height:1;border:1px solid var(--line);background:#fff;border-radius:5px;cursor:pointer;font-size:12px;color:var(--ink-2);transition:.12s}
+.mapzoom button:hover:not(:disabled){border-color:#B9C4D4;color:var(--ink-1);background:#F8FAFC}
+.mapzoom button:disabled{opacity:.38;cursor:not-allowed}
+.mapzoom span{font-size:10.5px;color:var(--ink-3);min-width:40px;text-align:center;font-variant-numeric:tabular-nums}
+.mapz-tip{margin-left:auto;font-size:10.5px;color:#98A2B3;padding-right:2px}
+/* 放大到没有客户的空白海域时的提示（不然只看见一张空图，以为坏了） */
+.mapempty{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:11.5px;color:var(--ink-3);box-shadow:0 2px 8px rgba(15,23,41,.08);pointer-events:none;white-space:nowrap}
+.mapempty[hidden]{display:none}
 .locdet{margin-top:9px;font-size:11px;color:var(--ink-3)}
 .locdet>summary{cursor:pointer;font-weight:600;color:var(--ink-2);padding:3px 0}
 .locdet>summary:hover{color:var(--brand)}
@@ -571,7 +586,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-12 19:31<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-12 20:45<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -3437,6 +3452,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <li>默认「世界」视图按<b>大区聚合</b>（北美 / 欧洲 / 亚太 / 拉美 / 中东非），点大区气泡即下钻；下钻后换成都市圈粒度，气泡半径随家数增长。</li>
         <li>总部定位分四级：<b>精确到城市</b>（实心）· <b>仅到州/省/大区</b>（空心虚线，位置取该区域几何中心）· <b>仅到国家</b>（空心，位置取该国中心）· <b>未定位</b>（不画）。空心的都不是真实总部坐标，图例与侧栏都写明了。</li>
         <li>解析只看「一句话简介」里的总部描述：认不出城市就不写城市名，认不出国家就标未定位，<b>不按语言习惯猜</b>。</li>
+        <li>地图可<b>自由缩放与平移</b>：滚轮以光标为中心缩放（1× 全世界 ↔ 48× 约一个国家），按住鼠标拖动跟手平移，触屏可双指捏合；右上角 + / − / 复位，右下角百分比显示当前倍数。放大超过 1.8× 时气泡自动从「大区」切成「都市圈」，侧栏「热点 Top」也跟着换口径。</li>
+        <li>地图上的预设按钮（世界 / 北美 / 欧洲 / 亚太 / 拉美 / 中东非）只是把这套缩放平移<b>一次到位</b>；只要手动拖过或缩过，预设按钮就不再高亮（表示当前是自定义视角），点「复位」随时回到全世界。</li>
+        <li>拖到边缘会被<b>兜住</b>，不会把陆地拖出屏幕；放大到没有客户的海面时会提示「这一带没有客户」，点复位即可回去。</li>
         <li>「客户录入」页可<b>上传表格批量导入</b>（.xlsx / .csv）：在本机浏览器内解析（xlsx 用原生 <code>DecompressionStream</code> 解压，不引第三方库、不上传文件），按表头别名认列 → 查重与校验 → 预览勾选 → 逐条写入云端 <code>customers_extra</code>，导入后立刻出现在总览、主表、跟进表和地图里。</li>
         <li>批量导入会一并带上<b>综合体量 / 门店数量 / 头部竞品品牌体量 / Webcam体量 / 是否在合作 / 是否建联</b>，所以导入的客户和其他客户一样参与体量分档与 SKU 统计，不会停在「未量化」。</li>
         <li>重名按<b>客户名</b>判（不分零售商 / 代理），与看板已有客户同名、或本次上传内部重复的，默认不勾选并写明原因。</li>
@@ -3637,10 +3655,15 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <script>/* ============================================================
-   views_map.js — 全球总部地理分布
+   views_map.js — 全球总部地理分布（可拖动 / 可缩放）
      · 底图：世界国界（Equal Earth 等积投影），按「该国有多少家客户」填色
-     · 气泡：世界视图按大区聚合（点大区下钻），大区视图按都市圈聚合
+     · 气泡：缩放小于 1.8 倍时按大区聚合（点大区下钻），放大后按都市圈聚合
      · 精度：city 实心 / state(省·州·大区) 空心 / country 空心小一档 / 未定位不画
+     · 交互：滚轮以光标为中心缩放、按住拖动平移、右上角 +/−/复位、触屏双指捏合
+
+   为什么把底图和气泡拆成两层（#mapbase / #mapdots）：
+   拖动只改 #mapg 的一个 transform，一帧不用重排；缩放时国界跟着 transform 走，
+   只有气泡层要按新的缩放系数重算半径与标签避让，几十个节点的 innerHTML 重建足够快。
    ============================================================ */
 (function (W) {
   'use strict';
@@ -3653,10 +3676,17 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   const R_COLOR = { P1: C.p1, P2: C.p2, P3: C.p3 };
   const P_ORDER = { P1: 0, P2: 1, P3: 2 };
   const MERGE_PX = 9;          // 屏幕上多近算同一个气泡（像素，与缩放无关）
+  const Z_MIN = 1, Z_MAX = 48; // 缩放范围：1 = 全世界刚好铺满，48 约等于一个国家
+  const REGION_Z = 1.8;        // 小于这个倍数按大区聚合，放大后切成都市圈
 
   const GEO = () => W.APP.geo.GEO;
   const PRESETS = () => (W.APP.geo.GEO.presets || []);
-  let CUR = 'world';           // 当前视图：world | na | eu | apac | latam | mea
+
+  /* 视图状态：cx / cy 是「投影坐标里的画面中心」，z 是缩放倍数。
+     所有预设（世界/北美/欧洲…）只是给这三个数赋值，之后用户随便拖、随便缩都在这套坐标里。 */
+  const VIEW = { cx: 0, cy: 0, z: 1, key: 'world', ready: false };
+  let CL_CACHE = null;
+  let LAST_LIST = [];
 
   function hqOf(c) { return c.hq && c.hq.ok ? c.hq : null; }
 
@@ -3683,19 +3713,67 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   function presetOf(key) {
     const list = PRESETS();
-    return list.filter((p) => p.k === key)[0] || { k: 'world', label: '世界', z: 1, cx: GEO().w / 2, cy: GEO().h / 2 };
+    const g = GEO();
+    return list.filter((p) => p.k === key)[0] || { k: 'world', label: '世界', z: 1, cx: g.w / 2, cy: g.h / 2 };
   }
 
-  /* 当前视图的局部尺寸系数：局部单位 = 屏幕像素 × f。
-     缩放越大 f 越小，气泡/字号/描边才能保持屏幕尺寸不变。 */
-  function sizeF() {
-    const p = presetOf(CUR);
-    return 1 / (p.z || 1);
+  /* 首次进入时对齐「世界」预设；之后保持用户自己拖出来的位置 */
+  function ensureView() {
+    if (VIEW.ready) return;
+    const g = GEO();
+    const w = presetOf('world');
+    VIEW.cx = w.cx != null ? w.cx : g.w / 2;
+    VIEW.cy = w.cy != null ? w.cy : g.h / 2;
+    VIEW.z = w.z || 1;
+    VIEW.key = 'world';
+    VIEW.ready = true;
+    clampView();
   }
+
+  /* 别让画面被拖到看不见陆地：
+     缩放不足以铺满时锁定居中；放大后允许中心在四周各溢出一点，
+     但这点余量必须跟着「当前视野多大」走 ——
+     早先写死成整幅画布的 12%（约 80 个投影单位），放大到 40 倍时等于允许往画布外拖 3000 多像素，
+     一拖就是满屏空白，还回不来。改成取 12% 与「视野一半的 55%」里的较小值：
+     这样不管放大到几倍，画布外露出的空白始终占窗口 27% 左右，手感才一致。 */
+  const EDGE_PAD = 4;
+  function clampView() {
+    const g = GEO();
+    if (VIEW.z < Z_MIN) VIEW.z = Z_MIN;
+    if (VIEW.z > Z_MAX) VIEW.z = Z_MAX;
+    if (VIEW.z <= 1.02) {
+      VIEW.cx = g.w / 2;
+      VIEW.cy = g.h / 2;
+      return;
+    }
+    const hw = (g.w / 2) / VIEW.z;
+    const hh = (g.h / 2) / VIEW.z;
+    const X0 = EDGE_PAD, X1 = g.w - EDGE_PAD, Y0 = EDGE_PAD, Y1 = g.h - EDGE_PAD;
+    const padX = Math.min((X1 - X0) * 0.12, hw * 0.55);
+    const padY = Math.min((Y1 - Y0) * 0.12, hh * 0.55);
+    VIEW.cx = Math.min(X1 - hw + padX, Math.max(X0 + hw - padX, VIEW.cx));
+    VIEW.cy = Math.min(Y1 - hh + padY, Math.max(Y0 + hh - padY, VIEW.cy));
+  }
+
+  function xform() {
+    const g = GEO();
+    return 'translate(' + (g.w / 2 - VIEW.cx * VIEW.z).toFixed(2) + ',' + (g.h / 2 - VIEW.cy * VIEW.z).toFixed(2) + ') scale(' + VIEW.z.toFixed(4) + ')';
+  }
+
+  /* 当前视图的局部尺寸系数：局部单位 = 屏幕像素 × f。 */
+  function sizeF() { return 1 / VIEW.z; }
   function viewBoxOf() {
-    const g = GEO(), p = presetOf(CUR), z = p.z || 1;
-    const w = g.w / z, h = g.h / z;
-    return { x0: p.cx - w / 2, y0: p.cy - h / 2, w, h };
+    const g = GEO();
+    const w = g.w / VIEW.z, h = g.h / VIEW.z;
+    return { x0: VIEW.cx - w / 2, y0: VIEW.cy - h / 2, w, h };
+  }
+  function isRegionMode() { return VIEW.z < REGION_Z; }
+
+  /* 视野里一个客户都没有？（放大到太平洋中间很容易发生）那句提示就是为这个准备的 */
+  function noneInView(cl) {
+    const vb = viewBoxOf();
+    return !(cl || []).some((c) => c.x >= vb.x0 && c.x <= vb.x0 + vb.w
+      && c.y >= vb.y0 && c.y <= vb.y0 + vb.h);
   }
 
   function proj(c) {
@@ -3848,42 +3926,18 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     return m;
   }
 
-  let CL_CACHE = null;
-  let BOX_CACHE = null;
-
-  function view(list) {
-    /* 兜底自愈：任何绕过 model.build() 的重建都会让客户没有 hq，地图退化成只剩国界底色。 */
-    if (APP.customers && APP.customers.length && !APP.customers.some((c) => c.hq)
-      && W.APP.geo && W.APP.geo.attachHQ) {
-      W.APP.geo.attachHQ();
-    }
-    const geo = GEO(), g = W.APP.geo;
-    const p = presetOf(CUR);
-    const z = p.z || 1, f = 1 / z;
-    const box = viewBoxOf();
-
-    const cCount = countryCounts(list);
-    const byRegion = {};
-    list.forEach((c) => { const k = g.regionOfCustomer(c); byRegion[k] = (byRegion[k] || 0) + 1; });
-
-    const worldCl = CUR === 'world';
-    const cl = worldCl ? clusterRegions(list, f) : clusterCities(list, f);
-    placeLabels(cl, box, f);
+  /* ---------- 气泡层（缩放 / 平移时要重画的就是这一段） ---------- */
+  function clusterFor(list) {
+    const f = sizeF();
+    const cl = isRegionMode() ? clusterRegions(list, f) : clusterCities(list, f);
+    placeLabels(cl, viewBoxOf(), f);
     CL_CACHE = cl;
-    BOX_CACHE = box;
+    return cl;
+  }
 
-    const located = list.filter(hqOf).length;
-    const missing = list.filter((c) => !hqOf(c));
-    const nCity = list.filter((c) => hqOf(c) && c.hq.precision === 'city').length;
-    const nState = list.filter((c) => hqOf(c) && c.hq.precision === 'state').length;
-    const nCtry = list.filter((c) => hqOf(c) && c.hq.precision === 'country').length;
-
-    const land = geo.features.map((ft) => {
-      const n = cCount[ft.a] || 0;
-      const nm = ft.a ? (CORE.COUNTRY_CN[ft.a] || ft.n) : ft.n;
-      return `<path class="land" d="${ft.d}" fill="${binColor(n)}" data-ctry="${esc(ft.a || '')}" data-cn="${esc(nm)}"><title>${esc(nm)}：${n ? n + ' 家' : '暂无客户'}</title></path>`;
-    }).join('');
-
+  function dotsHtml(cl) {
+    const f = sizeF();
+    const worldCl = isRegionMode();
     const bubbles = cl.map((c, i) => {
       const hollow = c.prec !== 'city';
       const dot = hollow
@@ -3897,6 +3951,80 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     }).join('');
 
     const labels = cl.filter((c) => !c.hide).map((c) => `<text class="mlabel${c.prec !== 'city' ? ' sub' : ''}" x="${c.lx.toFixed(1)}" y="${c.ly.toFixed(1)}" text-anchor="${c.anchor || 'middle'}" style="font-size:${(9.5 * f).toFixed(2)}px">${esc(c.label)}</text>`).join('');
+    return bubbles + labels;
+  }
+
+  /* 侧栏那一小块排行也要跟着粒度走（世界层面是大区，放大后是都市圈） */
+  function rankRowsHtml() {
+    const cl = CL_CACHE || [];
+    const bySize = cl.slice().sort((a, b) => b.items.length - a.items.length);
+    const maxC = bySize.length ? bySize[0].items.length : 1;
+    return bySize.slice(0, 6).map((c) => `<div class="dens-row">
+        <span class="nm" title="${esc(c.labelNote || c.label)}">${esc(c.label)}</span>
+        <span class="bar"><i style="width:${(c.items.length / maxC) * 100}%;background:${c.prec === 'city' ? c.color : '#93A2B5'}"></i></span>
+        <span class="n">${c.items.length}</span></div>`).join('') || '<div class="empty">无数据</div>';
+  }
+
+  /* 只重画气泡层 + 更新 transform：拖动 / 缩放时走这条路径 */
+  function paint() {
+    const gEl = document.getElementById('mapg');
+    const dEl = document.getElementById('mapdots');
+    if (!gEl || !dEl) return;
+    gEl.setAttribute('transform', xform());
+    const cl = clusterFor(LAST_LIST);
+    dEl.innerHTML = dotsHtml(cl);
+    const rk = document.getElementById('maprank');
+    if (rk) rk.innerHTML = rankRowsHtml();
+    const badge = document.getElementById('mapz-info');
+    if (badge) badge.textContent = VIEW.z <= 1.02 ? '全世界' : Math.round(VIEW.z * 100) + '%';
+    const empty = document.getElementById('mapempty');
+    if (empty) empty.hidden = !noneInView(cl);
+    syncZoomBtns();
+    bindDots();
+  }
+
+  function syncZoomBtns() {
+    const inb = document.querySelector('[data-zoom="in"]');
+    const out = document.querySelector('[data-zoom="out"]');
+    if (inb) inb.disabled = VIEW.z >= Z_MAX - 0.01;
+    if (out) out.disabled = VIEW.z <= Z_MIN + 0.01;
+  }
+
+  /* 手动拖 / 缩之后，预设按钮的高亮就不再成立了 */
+  function markFree() {
+    VIEW.key = '';
+    Array.prototype.forEach.call(document.querySelectorAll('.mapz .mz'), (b) => b.classList.remove('on'));
+  }
+
+  /* ---------- 视图 ---------- */
+  function view(list) {
+    /* 兜底自愈：任何绕过 model.build() 的重建都会让客户没有 hq，地图退化成只剩国界底色。 */
+    if (APP.customers && APP.customers.length && !APP.customers.some((c) => c.hq)
+      && W.APP.geo && W.APP.geo.attachHQ) {
+      W.APP.geo.attachHQ();
+    }
+    ensureView();
+    LAST_LIST = list;
+    const geo = GEO(), g = W.APP.geo;
+
+    const cCount = countryCounts(list);
+    const byRegion = {};
+    list.forEach((c) => { const k = g.regionOfCustomer(c); byRegion[k] = (byRegion[k] || 0) + 1; });
+
+    const cl = clusterFor(list);
+    const worldCl = isRegionMode();
+
+    const located = list.filter(hqOf).length;
+    const missing = list.filter((c) => !hqOf(c));
+    const nCity = list.filter((c) => hqOf(c) && c.hq.precision === 'city').length;
+    const nState = list.filter((c) => hqOf(c) && c.hq.precision === 'state').length;
+    const nCtry = list.filter((c) => hqOf(c) && c.hq.precision === 'country').length;
+
+    const land = geo.features.map((ft) => {
+      const n = cCount[ft.a] || 0;
+      const nm = ft.a ? (CORE.COUNTRY_CN[ft.a] || ft.n) : ft.n;
+      return `<path class="land" d="${ft.d}" fill="${binColor(n)}" data-ctry="${esc(ft.a || '')}" data-cn="${esc(nm)}" vector-effect="non-scaling-stroke"><title>${esc(nm)}：${n ? n + ' 家' : '暂无客户'}</title></path>`;
+    }).join('');
 
     // 侧栏：大区
     const rKeys = CORE.REGIONS.concat(byRegion['其他'] ? ['其他'] : []);
@@ -3914,13 +4042,6 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <span class="bar"><i style="width:${(v / maxC0) * 100}%;background:${C.brand}"></i></span>
         <span class="n">${v}</span></div>`).join('');
 
-    const bySize = cl.slice().sort((a, b) => b.items.length - a.items.length);
-    const maxC = bySize.length ? bySize[0].items.length : 1;
-    const cityRanks = bySize.slice(0, 6).map((c) => `<div class="dens-row">
-        <span class="nm" title="${esc(c.labelNote || c.label)}">${esc(c.label)}</span>
-        <span class="bar"><i style="width:${(c.items.length / maxC) * 100}%;background:${c.prec === 'city' ? c.color : '#93A2B5'}"></i></span>
-        <span class="n">${c.items.length}</span></div>`).join('');
-
     const legend = [
       { label: '≥200 家', color: '#7A1613' }, { label: '50–199', color: '#B42318' },
       { label: '10–49', color: '#DC6803' }, { label: '3–9', color: '#F79009' },
@@ -3929,7 +4050,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
     const zbtns = PRESETS().map((pp) => {
       const n = pp.k === 'world' ? list.filter(hqOf).length : (byRegion[pp.label] || 0);
-      return `<button class="mz${pp.k === CUR ? ' on' : ''}" data-mz="${pp.k}" title="${pp.label}视图${pp.k === 'world' ? '（按大区聚合）' : ''}">${pp.label}<i>${n}</i></button>`;
+      return `<button class="mz${pp.k === VIEW.key ? ' on' : ''}" data-mz="${pp.k}" title="${pp.label}视图${pp.k === 'world' ? '（按大区聚合）' : ''}">${pp.label}<i>${n}</i></button>`;
     }).join('');
 
     return `
@@ -3937,8 +4058,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       <div class="card map-card">
         <div class="card-h"><h3>${IS_R ? '零售商' : '代理集成商'}全球总部分布</h3>
           <span class="hint">底色 = 该国客户数 · 气泡 = ${worldCl ? '大区（点击下钻）' : '都市圈（半径随家数）'} · 实心 = 精确到城市，空心 = 只到州省或国家</span></div>
-        <div class="mapz">${zbtns}</div>
-        <div style="padding:6px 12px 0">
+        <div class="mapz">${zbtns}<span class="mapz-tip">滚轮缩放 · 按住拖动</span></div>
+        <div class="mapwrap">
           <svg class="map-svg" viewBox="0 0 ${geo.w} ${geo.h}" id="na-map">
             <defs>
               <linearGradient id="mapFadeTop" x1="0" y1="0" x2="0" y2="1">
@@ -3946,13 +4067,19 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
                 <stop offset="1" stop-color="#FBFCFE" stop-opacity="0"/>
               </linearGradient>
             </defs>
-            <g transform="translate(${(geo.w / 2 - p.cx * z).toFixed(2)},${(geo.h / 2 - p.cy * z).toFixed(2)}) scale(${z})">
-              ${land}
-              ${bubbles}
-              ${labels}
+            <g id="mapg" transform="${xform()}">
+              <g id="mapbase">${land}</g>
+              <g id="mapdots">${dotsHtml(cl)}</g>
             </g>
             <rect x="0" y="0" width="${geo.w}" height="20" fill="url(#mapFadeTop)" pointer-events="none"/>
           </svg>
+          <div class="mapzoom">
+            <button type="button" data-zoom="in" title="放大（滚轮上滚）">+</button>
+            <button type="button" data-zoom="out" title="缩小（滚轮下滚）">−</button>
+            <button type="button" data-zoom="reset" title="回到全世界">复位</button>
+            <span id="mapz-info">${VIEW.z <= 1.02 ? '全世界' : Math.round(VIEW.z * 100) + '%'}</span>
+          </div>
+          <div class="mapempty" id="mapempty"${noneInView(cl) && VIEW.z > 1.02 ? '' : ' hidden'}>这一带没有客户 · 点右上角「复位」回到全世界</div>
         </div>
         <div class="map-legend">
           ${legend.map((l) => `<span class="lg"><span class="sw" style="background:${l.color}"></span>${l.label}</span>`).join('')}
@@ -3967,8 +4094,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           <div class="card-b">${regRows}</div></div>
         <div class="card"><div class="card-h"><h3>国家 Top</h3></div>
           <div class="card-b">${ctryRows || '<div class="empty">无数据</div>'}</div></div>
-        <div class="card"><div class="card-h"><h3>${worldCl ? '大区' : '都市圈'} Top</h3><span class="hint">灰色条 = 仅到州省/国家</span></div>
-          <div class="card-b">${cityRanks || '<div class="empty">无数据</div>'}</div></div>
+        <div class="card"><div class="card-h"><h3>热点 Top</h3><span class="hint">${worldCl ? '按大区' : '按都市圈'} · 随缩放变化</span></div>
+          <div class="card-b" id="maprank">${rankRowsHtml()}</div></div>
         <div class="card"><div class="card-h"><h3>定位覆盖</h3></div>
           <div class="card-b">
             <div class="kv">
@@ -3987,11 +4114,12 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="maptip" id="maptip"></div>`;
   }
 
-  function bind(list) {
+  /* ---------- 气泡交互（每次重画后都要重绑） ---------- */
+  function bindDots() {
     const tip = document.getElementById('maptip');
     const map = document.getElementById('na-map');
     if (!tip || !map) return;
-    const cl = (CL_CACHE && CL_CACHE.length) ? CL_CACHE : (CUR === 'world' ? clusterRegions(list, 1) : clusterCities(list, 1));
+    const cl = CL_CACHE || [];
 
     const show = (evt, html) => {
       tip.innerHTML = html;
@@ -4011,12 +4139,15 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         const note = c.prec === 'city'
           ? (c.labelNote ? `<div class="tt-sub">${CORE.esc(c.labelNote)}</div>` : '')
           : `<div class="tt-sub warn">${CORE.esc(c.labelNote || '仅解析到上级区域，气泡不是真实总部')}</div>`;
-        const hint = c.target ? '<div class="tt-hint">点击放大到「' + c.label + '」</div>'
+        const hint = c.target ? '<div class="tt-hint">点击放大到「' + CORE.esc(c.label) + '」</div>'
           : '<div class="tt-hint">点击客户名查看详情</div>';
         show(e, `<div class="tt-h">${CORE.esc(c.label)}</div><div class="tt-sub">${c.items.length} 家${c.items.length > 6 ? '（前 6 家）' : ''}</div>${note}${rows}${hint}`);
       });
       g.addEventListener('mouseleave', hide);
       g.addEventListener('click', (e) => {
+        /* 拖动收尾的那一下浏览器仍会补一个 click：按「最近一次拖动挪了多远 + 松手多久」判断，
+           不能只看 DRAG —— 它在 pointerup 里已经被清成 null 了。 */
+        if (Date.now() - DRAG_END.t < 400 && DRAG_END.moved > 4) return;
         const row = e.target.closest('.tt-row');
         if (row && W.UI) { W.UI.openDrawer(row.dataset.id); return; }
         const c = cl[Number(g.dataset.ci)];
@@ -4027,30 +4158,183 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       p.addEventListener('mousemove', (e) => {
         const code = p.getAttribute('data-ctry');
         const nm = p.getAttribute('data-cn');
-        const hits = code ? list.filter((c) => (c.country || (c.hq && c.hq.country) || '').toUpperCase() === code) : [];
+        const hits = code ? LAST_LIST.filter((c) => (c.country || (c.hq && c.hq.country) || '').toUpperCase() === code) : [];
         show(e, `<div class="tt-h">${CORE.esc(nm)}</div><div class="tt-sub">${hits.length ? hits.length + ' 家客户' : '暂无客户记录'}</div>`);
       });
       p.addEventListener('mouseleave', hide);
     });
-    map.addEventListener('mouseleave', hide);
+  }
+
+  /* ---------- 缩放 / 平移 ---------- */
+  let DRAG = null;                              // 拖动中：{ x, y, cx, cy, moved }
+  let DRAG_END = { moved: 0, t: 0 };            // 上一次拖动收尾：用于把收尾的那个 click 吞掉
+  let PINCH = null;                             // 双指：{ d, z }
+
+  /* 把缩放倍数定到 z2，并保证光标（mx,my，视图坐标）下面的那一点不动 */
+  function zoomAt(z2, mx, my) {
+    const g = GEO();
+    z2 = Math.max(Z_MIN, Math.min(Z_MAX, z2));
+    const lx = VIEW.cx + (mx - g.w / 2) / VIEW.z;
+    const ly = VIEW.cy + (my - g.h / 2) / VIEW.z;
+    VIEW.z = z2;
+    VIEW.cx = lx - (mx - g.w / 2) / z2;
+    VIEW.cy = ly - (my - g.h / 2) / z2;
+    clampView();
+    markFree();
+    paint();
+  }
+
+  /* 视图坐标（0..w / 0..h）转成屏幕位置用的比例 */
+  function svgScale(svg) {
+    const r = svg.getBoundingClientRect();
+    const g = GEO();
+    return { k: (r.width || g.w) / g.w, rect: r };
+  }
+
+  function bind(list) {
+    LAST_LIST = list;
+    const map = document.getElementById('na-map');
+    const tip = document.getElementById('maptip');
+    if (!map) return;
+    bindDots();
+    if (tip) map.addEventListener('mouseleave', () => tip.classList.remove('on'));
+    syncZoomBtns();
+
+    if (map.dataset.pz === '1') return;   // 事件只绑一次，之后重绘靠 bindDots
+    map.dataset.pz = '1';
+
+    /* 滚轮：以光标为中心缩放。必须 passive:false 才能 preventDefault 掉页面滚动。
+       deltaMode 要归一：Firefox / 部分 Windows 鼠标按「行」（1）或「页」（2）给数，
+       不换算的话同一档滚动的缩放手感会差 16 倍。单次再夹一道，免得一次甩飞。 */
+    map.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const g = GEO();
+      const sc = svgScale(map);
+      const mx = ((e.clientX - sc.rect.left) / sc.k) || g.w / 2;
+      const my = ((e.clientY - sc.rect.top) / sc.k) || g.h / 2;
+      let dy = e.deltaY || 0;
+      if (e.deltaMode === 1) dy *= 16;
+      else if (e.deltaMode === 2) dy *= 100;
+      const factor = Math.max(0.5, Math.min(2, Math.exp(-dy * 0.0013)));
+      zoomAt(VIEW.z * factor, mx, my);
+    }, { passive: false });
+
+    /* 拖动平移 + 双指捏合 */
+    const ptrs = new Map();
+    const dist2 = () => {
+      const a = Array.from(ptrs.values());
+      if (a.length < 2) return 0;
+      return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y) || 0;
+    };
+    const mid = () => {
+      const a = Array.from(ptrs.values());
+      return { x: (a[0].x + a[1].x) / 2, y: (a[0].y + a[1].y) / 2 };
+    };
+
+    map.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (map.setPointerCapture) { try { map.setPointerCapture(e.pointerId); } catch (_) { /* 忽略 */ } }
+      if (ptrs.size === 1) {
+        DRAG = { x: e.clientX, y: e.clientY, cx: VIEW.cx, cy: VIEW.cy, moved: 0 };
+      } else if (ptrs.size === 2) {
+        DRAG = null;
+        PINCH = { d: dist2(), z: VIEW.z };
+      }
+      map.classList.add('grabbing');
+    });
+
+    map.addEventListener('pointermove', (e) => {
+      if (!ptrs.has(e.pointerId)) return;
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (PINCH && ptrs.size === 2) {
+        const d = dist2();
+        if (PINCH.d > 8 && d > 8) {
+          const sc = svgScale(map);
+          const m = mid();
+          const g = GEO();
+          zoomAt(PINCH.z * (d / PINCH.d), ((m.x - sc.rect.left) / sc.k) || g.w / 2, ((m.y - sc.rect.top) / sc.k) || g.h / 2);
+        }
+        return;
+      }
+      if (!DRAG) return;
+      const dx = e.clientX - DRAG.x, dy = e.clientY - DRAG.y;
+      DRAG.moved = Math.max(DRAG.moved, Math.hypot(dx, dy));
+      if (DRAG.moved < 3) return;
+      const sc = svgScale(map);
+      if (!sc.k) return;
+      VIEW.cx = DRAG.cx - dx / (sc.k * VIEW.z);
+      VIEW.cy = DRAG.cy - dy / (sc.k * VIEW.z);
+      clampView();
+      markFree();
+      const gEl = document.getElementById('mapg');
+      if (gEl) gEl.setAttribute('transform', xform());   // 拖动只改 transform，不重画
+      map.classList.add('dragging');
+    });
+
+    const end = (e) => {
+      if (e && e.pointerId != null) ptrs.delete(e.pointerId);
+      if (ptrs.size < 2) PINCH = null;
+      if (ptrs.size === 0) {
+        DRAG_END = { moved: DRAG ? DRAG.moved : 0, t: Date.now() };
+        DRAG = null;
+        map.classList.remove('grabbing', 'dragging');
+      } else if (ptrs.size === 1) {
+        // 从双指松到单指：以剩下那根手指重新起一次拖动，避免画面跳
+        const a = Array.from(ptrs.values())[0];
+        DRAG = { x: a.x, y: a.y, cx: VIEW.cx, cy: VIEW.cy, moved: 0 };
+      }
+    };
+    map.addEventListener('pointerup', end);
+    map.addEventListener('pointercancel', end);
+    map.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'mouse') end(e); });
+
+    /* 右上角按钮：直接绑当前这一批按钮。
+       早先写在 document 上做委托，但地图每重绘一次（下钻、切筛选）就再挂一层监听，
+       点一次「+」会连跳好几档（实测叠到 10 层，z 从 2.1 一下冲到 41）。 */
+    Array.prototype.forEach.call(document.querySelectorAll('[data-zoom]'), (b) => {
+      b.addEventListener('click', (e) => {
+        if (e.target.closest && e.target.closest('[data-zoom]') !== b) return;
+        e.preventDefault();
+        const act = b.getAttribute('data-zoom');
+        if (act === 'reset') {
+          const wv = presetOf('world');
+          VIEW.cx = wv.cx; VIEW.cy = wv.cy; VIEW.z = wv.z || 1;
+          VIEW.key = 'world';
+          Array.prototype.forEach.call(document.querySelectorAll('.mapz .mz'), (x) => x.classList.toggle('on', x.dataset.mz === 'world'));
+          clampView();
+          paint();
+        } else {
+          const g = GEO();
+          zoomAt(VIEW.z * (act === 'in' ? 1.45 : 1 / 1.45), g.w / 2, g.h / 2);
+        }
+      });
+    });
   }
 
   /* 区域切换：只重绘地图这一段，不重建整页 */
   function setZoom(key) {
-    if (!PRESETS().some((p) => p.k === key)) return;
-    CUR = key;
+    const p = PRESETS().filter((x) => x.k === key)[0];
+    if (!p) return;
+    VIEW.cx = p.cx;
+    VIEW.cy = p.cy;
+    VIEW.z = p.z || 1;
+    VIEW.key = key;
+    clampView();
     const sec = document.getElementById('view-map');
     if (sec && W.UI && W.UI.renderMapOnly) { W.UI.renderMapOnly(); return; }
     if (sec && W.MAP_VIEW) {
-      sec.innerHTML = W.MAP_VIEW(APP.filtered ? APP.filtered() : (IS_R ? APP.retailers : APP.agents));
-      bind(APP.filtered ? APP.filtered() : (IS_R ? APP.retailers : APP.agents));
+      const list = APP.filtered ? APP.filtered() : (IS_R ? APP.retailers : APP.agents);
+      sec.innerHTML = W.MAP_VIEW(list);
+      bind(list);
     }
   }
 
   W.MAP_VIEW = view;
   W.MAP_BIND = bind;
   W.MAP_SETZOOM = setZoom;
-  W.MAP_STATE = () => ({ cur: CUR, clusters: CL_CACHE });
+  W.MAP_STATE = () => ({ cur: VIEW.key, view: { cx: VIEW.cx, cy: VIEW.cy, z: VIEW.z }, clusters: CL_CACHE });
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
 <script>/* ============================================================

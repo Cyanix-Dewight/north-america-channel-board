@@ -368,6 +368,40 @@ GitHub Pages 的站点源配置在仓库 **Settings → Pages**（Source: `main`
 
 数据存在云端表 `pipe_records`（WorkBuddy 云服务，`wbapp_AGkoQ4nhcy53ZjRenRni7X`），主键是 `客户类型|客户名`，所以 Excel 行序调整不会错位。云端表**不开放删除**：页面上的「清空记录」只清当前浏览器缓存，不会删掉同事填的内容。
 
+## 云端同步的双通道（WorkBuddy / Supabase，2026-11 新增）
+
+WorkBuddy 云服务的数据库资源是按额度计费的，欠费/超限时接口返回 `DATABASE_RESOURCE_ISOLATED`（HTTP 402），所有读写被暂停。为了让协作功能不再依赖这一块额度，看板支持**第二条同步通道：Supabase**（免费档，独立账号），两边表结构逐列一致，随时互切、数据互搬。
+
+### 切到 Supabase 的步骤
+
+1. 注册 [supabase.com](https://supabase.com)（免费），建一个 Project，区域随意（选近的如新加坡/东京延迟低）。
+2. 在 SQL Editor 里粘贴执行 **`deploy/supabase_schema.sql`**（建两张表 + 时间戳触发器 + RLS，一次完成）。
+3. 在 **Project Settings → API** 里复制 **Project URL** 和 **anon public key**（不是 service_role key），填进 **`data/supabase.json`**，并把 `"enabled"` 改成 `true`。
+4. `python src/migrate_to_supabase.py --check` 验证连通 → `python src/migrate_to_supabase.py --seed` 灌入本地种子（Evelyn 新增名单 680 条 + Awevoke/Shure 两家）。
+5. `python build_v5.py && python publish.py` 重新发布。跟进页角标出现「**同步·Supabase**」即切换成功。
+
+### 切回 WorkBuddy
+
+把 `data/supabase.json` 的 `"enabled"` 改回 `false`，重新构建发布即可，一行代码都不用动。角标不再显示「同步·Supabase」就是回到了 WorkBuddy 通道。
+
+### 数据搬运
+
+`src/migrate_to_supabase.py` 三个模式：
+
+| 命令 | 作用 |
+|---|---|
+| `--check` | 验证 Supabase 连通与建表是否完成 |
+| `--seed` | 把本地种子灌进 Supabase（Evelyn 新增名单的 680 条跟进记录 + 2 家手工录入客户） |
+| `--from-workbuddy` | 从 WorkBuddy 云库全量拉取再写入 Supabase（**需 WorkBuddy 额度已恢复**；会把 Cyan 填的原表客户记录等所有行搬全） |
+
+迁移是**按 id 合并**（upsert），不会清空 Supabase 里已有的更新；推荐先 `--seed` 保底，等 WorkBuddy 额度恢复后再跑一次 `--from-workbuddy` 把旧库补全。
+
+### 安全定位
+
+Supabase 的 anon key 与 WorkBuddy 的 publishableKey 同级：**公开可读写**，只承载跟进记录、客户名这类非敏感协作数据，别放机密信息。RLS 策略与 WorkBuddy 侧一致（anon 全开），属于「知道链接就能填」的定位，和现在的共享版相同。
+
+
+
 ### 跟进页的两个视图操作
 
 - **点负责人负载的条形 = 只看这个人的客户**：右上「负责人负载」里每根条都可点，点一下就筛出该负责人名下的客户（表格上方出现「只看 Evelyn · 614 家 ×」的小胶囊，点 × 或再点同一条即可恢复）。筛选只作用于跟进表，不影响其它页签；切换「全部 / 新增 / 原表」或细分时若这个人已不在当前范围，筛选会自动清除，不会出现空表。点条形时其它负责人会变淡，方便看清当前在看谁。

@@ -577,6 +577,13 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 .dfmsg .dot{width:6px;height:6px;border-radius:50%;background:#12B76A;flex:0 0 auto}
 @media (max-width:560px){.dfgrid{grid-template-columns:1fr}}
 
+/* ---- 抽屉里的「跟进历史」时间线（pipe_history 只增不改） ---- */
+.histlist{max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:1px}
+.histlist .hitem{display:flex;flex-direction:column;gap:2px;border-left:2px solid var(--line);padding:4px 0 4px 10px;margin:3px 0}
+.histlist .hitem .ht{font-size:10.5px;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.histlist .hitem .hc{font-size:12px;color:var(--ink);line-height:1.45;word-break:break-word}
+.histlist .hitem .hc b{font-weight:600}
+
 </style>
 </head>
 <body>
@@ -586,7 +593,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-13 16:59<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-13 18:04<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -3256,6 +3263,10 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
             ? '<span class="dot"></span>离开输入框即自动保存，并同步给所有打开链接的人'
             : '<span class="dot"></span>离开输入框即自动保存到本机浏览器')
           : '当前模块未加载，暂不能编辑'}</div>
+      </div>
+      <div class="sect" id="df-hist-sect">
+        <h4>跟进历史 <span class="mini muted">（每次修改自动留痕，含批量导入）</span></h4>
+        <div class="histlist" id="df-hist"><span class="mini muted">读取中…</span></div>
       </div>`;
 
     box.innerHTML = `
@@ -3325,6 +3336,54 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   function bindDrawerClicks(box, c) {
     $$('[data-act="close-drawer"]', box).forEach((b) => b.addEventListener('click', closeDrawer));
     bindDrawerEdits(box, c);
+    loadHist(box, c);
+  }
+
+  /* ---------- 跟进历史（每次修改自动留痕） ----------
+     读云端 pipe_history 表（只增不改不删）：旧值 → 新值 · 谁 · 何时。
+     表还没建时给启用指引，不影响当前填写；本机模式（file:// 双击）不显示历史。 */
+  const HIST_FIELD = {
+    stage: '当前阶段', done: '已完成动作', next: '下一步行动', owner: '负责人',
+    planDate: '计划跟进', lastDate: '最近跟进', difficulty: '开发难点',
+    direction: '方向判断', verify: '数据核实', note: '备注',
+  };
+  function loadHist(box, c) {
+    const elH = box.querySelector('#df-hist');
+    if (!elH) return;
+    if (!W.SYNC || !W.SYNC.enabled || !W.SYNC.hist) {
+      elH.innerHTML = '<span class="mini muted">本机模式不显示历史——用共享链接打开时，这里的每次修改都会自动留痕</span>';
+      return;
+    }
+    if (!W.PIPE || !W.PIPE.ck || !c) {
+      elH.innerHTML = '<span class="mini muted">—</span>';
+      return;
+    }
+    const id = W.PIPE.ck(c);
+    Promise.resolve(W.SYNC.hist(id)).then((res) => {
+      const hb = box.querySelector('#df-hist');
+      if (!hb || !box.classList.contains('on')) return;   // 抽屉已关/已换人：不回填
+      if (res && res.missing) {
+        hb.innerHTML = '<span class="mini muted">历史留痕表还没启用（不影响当前填写）：在 Supabase 控制台再执行一遍最新建表 SQL 即可</span>';
+        return;
+      }
+      const rows = (res && res.data) || [];
+      if (!rows.length) {
+        hb.innerHTML = '<span class="mini muted">暂无历史记录（这家客户还没人改过跟进字段）</span>';
+        return;
+      }
+      const flat = (s) => String(s == null ? '' : s).replace(/\r?\n/g, ' ⏎ ');
+      const trunc = (s) => (s.length > 70 ? s.slice(0, 70) + '…' : s);
+      hb.innerHTML = rows.map((h) => {
+        const f = HIST_FIELD[h.field] || h.field;
+        const old = flat(h.old_val), nw = flat(h.new_val);
+        const at = String(h.at || '').slice(0, 16).replace('T', ' ');
+        return `<div class="hitem"><span class="ht">${esc(at)} · ${esc(h.by || '—')}</span>
+          <span class="hc"><b>${esc(f)}</b>：${old ? esc(trunc(old)) : '（空）'} → ${nw ? esc(trunc(nw)) : '（清空）'}</span></div>`;
+      }).join('');
+    }).catch(() => {
+      const hb = box.querySelector('#df-hist');
+      if (hb) hb.innerHTML = '<span class="mini muted">历史读取失败，稍后重开抽屉再看</span>';
+    });
   }
 
   /* 抽屉里的四个自由文本字段。
@@ -3369,6 +3428,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         }
         // 背后的跟进表 / KPI / 图表跟着更新（抽屉不在 #view-pipe 里，不会被重绘冲掉）
         if (W.PIPE.refresh) W.PIPE.refresh();
+        // 历史时间线跟着补一条（留痕是异步落库的，稍等片刻再读）
+        setTimeout(() => { if (box.classList.contains('on')) loadHist(box, c); }, 600);
         if (W.__toast) W.__toast(W.PIPE.cloudOn() ? '已保存并同步' : '已保存');
       };
 
@@ -5586,10 +5647,18 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   function rebuild() {
     const keep = snapshot();
+    /* 批量导入的提示条也要跨重绘保留：导入完成后 SYNC.pull() 会带着新数据回来
+       触发一次 ENTRY_APPLY 重建，不保的话「已导入 N 家」提示刚写上就被冲没了。 */
+    const msgEl = document.getElementById('imp-msg');
+    const keepMsg = msgEl ? { t: msgEl.textContent, c: msgEl.style.color } : null;
     W.__EXTRA__ = ROWS;
     APP.build();
     if (W.UI && W.UI.render) W.UI.render();
     restore(keep);
+    if (keepMsg && keepMsg.t) {
+      const m2 = document.getElementById('imp-msg');
+      if (m2) { m2.textContent = keepMsg.t; m2.style.color = keepMsg.c || '#067647'; }
+    }
     paintSub();
   }
 
@@ -5730,10 +5799,63 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     webcam体量可推测预估: 'webcam_vol', 相关产品线体量可推测预估: 'webcam_vol',
     是否在合作: 'coop', 是否建联: 'contact', 备注: 'note',
     主要品类: 'cats', 负责人: 'owner', 目标行业: 'ind',
+    // 跟进字段（2026-11：批量导入不仅建新客户，还能给已有客户更新跟进记录）
+    当前阶段: 'stage', 阶段: 'stage', 开发阶段: 'stage', 当前开发阶段: 'stage',
+    已完成动作: 'done', 已完成: 'done',
+    下一步行动: 'next', 下一步动作: 'next', 下一步: 'next',
+    计划跟进: 'plan', 计划跟进日期: 'plan',
+    最近跟进: 'last', 最近跟进日期: 'last',
   };
   const FIELDS = ['name', 'ctype', 'country', 'priority', 'intro', 'site', 'region', 'cats',
     'scale_text', 'comp_raw', 'comp_brand', 'webcam_vol', 'has_store', 'store_raw',
-    'webcam_on', 'coop', 'contact', 'note', 'owner', 'ind'];
+    'webcam_on', 'coop', 'contact', 'note', 'owner', 'ind',
+    'stage', 'done', 'next', 'plan', 'last'];
+
+  /* 跟进日期归一：'2026/11/2' '2026.11.02' '2026年11月2日' → '2026-11-02'；
+     Excel 里的日期是 1900 纪元序列号（如 45237），一并换算。认不出返回空（不猜）。 */
+  function normDate(v) {
+    const s = String(v == null ? '' : v).trim();
+    if (!s) return '';
+    const m = s.match(/^(\d{4})[-\/.年](\d{1,2})[-\/.月](\d{1,2})日?$/);
+    if (m) return m[1] + '-' + String(m[2]).padStart(2, '0') + '-' + String(m[3]).padStart(2, '0');
+    if (/^\d{5}$/.test(s)) {
+      const n = Number(s);
+      if (n > 20000 && n < 60000) {
+        const d = new Date((n - 25569) * 86400000);
+        if (!isNaN(d)) return d.toISOString().slice(0, 10);
+      }
+    }
+    const t = new Date(s);
+    if (!isNaN(t) && t.getFullYear() > 1999 && t.getFullYear() < 2100) return t.toISOString().slice(0, 10);
+    return '';
+  }
+
+  /* 阶段归一：写法有出入的映射到看板的标准枚举（与跟进表下拉同口径）；
+     认不出的保留原文并在预览里提示，不硬改。 */
+  const STAGE_SYN = [
+    [/暂停|搁置/, '暂停·搁置'],
+    [/合作|维护/, '已合作·维护中'],
+    [/上架|首单/, '已上架·首单'],
+    [/报价|谈判/, '报价·谈判'],
+    [/寄样|评估/, '已寄样·评估'],
+    [/实质|沟通/, '实质沟通'],
+    [/回复|回信/, '已回复'],
+    [/建联|触达/, '已建联'],
+    [/未|待|没/, '未接触'],
+  ];
+  function stageNorm(v) {
+    const s = String(v == null ? '' : v).trim();
+    if (!s) return '';
+    const stages = (W.PIPE && W.PIPE.STAGES) || [];
+    if (stages.indexOf(s) >= 0) return s;
+    for (let i = 0; i < STAGE_SYN.length; i++) {
+      if (STAGE_SYN[i][0].test(s)) return STAGE_SYN[i][1];
+    }
+    return s;
+  }
+
+  /* 一行里的跟进字段是否值得写（五个字段任一非空） */
+  const hasPipe = (r) => !!(r.stage || r.done || r.next || r.plan || r.last);
 
   const normHead = (s) => String(s == null ? '' : s).replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')').toLowerCase();
 
@@ -5890,6 +6012,16 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       const o = { _row: i + 2 };
       Object.keys(map).forEach((k) => { o[k] = String(r[map[k]] == null ? '' : r[map[k]]).trim(); });
       if (!o.name && !o.intro && !o.site) return;
+      // 跟进字段归一：日期多种写法 → YYYY-MM-DD；阶段写法 → 标准枚举。
+      // 认不出的日期留空并保留原文，预览时提示该格跳过（不猜）。
+      ['plan', 'last'].forEach((k) => {
+        const raw = o[k];
+        if (!raw) return;
+        const d = normDate(raw);
+        if (d) o[k] = d;
+        else { o[k] = ''; o[k + 'Raw'] = raw; }
+      });
+      if (o.stage) o.stage = stageNorm(o.stage);
       recs.push(o);
     });
     return { header: rows[0], recs, mapped: Object.keys(map) };
@@ -5929,21 +6061,44 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const seen = {};
     const exist = {};
     /* 重名按「名字」判，不分客户类型：同一家公司在零售商表和代理表里各存一条
-       就是重复录入，不是两个客户。 */
-    APP.customers.forEach((c) => { exist[nkey(c.name)] = c.name; });
+       就是重复录入，不是两个客户。存整个客户对象：更新跟进时要用它的类型拼记录 id，
+       不能用表里猜的类型（不然记录会错位）。 */
+    APP.customers.forEach((c) => { exist[nkey(c.name)] = c; });
+    const stages = (W.PIPE && W.PIPE.STAGES) || [];
     return recs.map((r) => {
       const ctry = normCountry(r.country);
       const ctype = normCtype(r.ctype, r);
       const key = nkey(r.name);
+      const hit = exist[key];
       let state = 'ok';
       let why = '';
       if (!r.name) { state = 'bad'; why = '缺客户名'; }
-      else if (exist[key]) { state = 'dup'; why = '看板已有同名客户（' + exist[key] + '）'; }
-      else if (seen[key]) { state = 'dup'; why = '本次上传里重复'; }
-      if (r.site && !CORE.siteUrl(r.site)) { state = state === 'ok' ? 'warn' : state; why = why || '官网格式不对，已按空处理'; }
-      if (ctry.note) { state = state === 'ok' ? 'warn' : state; why = why || ctry.note; }
+      else if (hit) {
+        if (hasPipe(r)) {
+          /* 已有客户 + 本行带跟进字段 = 不建新客户，只更新这五项跟进数据 */
+          state = 'upd';
+          why = '看板已有该客户 · 将更新跟进记录';
+        } else {
+          state = 'dup';
+          why = '看板已有同名客户（' + hit.name + '），本行没有跟进字段可更新';
+        }
+      } else if (seen[key]) {
+        state = 'dup';
+        why = '本次上传里重复';
+      }
+      if (r.site && !CORE.siteUrl(r.site)) { if (state === 'ok') state = 'warn'; why = why || '官网格式不对，已按空处理'; }
+      if (ctry.note) { if (state === 'ok') state = 'warn'; why = why || ctry.note; }
+      if (r.planRaw || r.lastRaw) { if (state === 'ok') state = 'warn'; why = why || '跟进日期「' + (r.planRaw || r.lastRaw) + '」没认出来，该格跳过'; }
+      if (r.stage && stages.length && stages.indexOf(r.stage) < 0) { if (state === 'ok') state = 'warn'; why = why || '阶段「' + r.stage + '」不在标准枚举里，将按原样写入'; }
       if (r.name) seen[key] = true;
-      return Object.assign({}, r, { _ctype: ctype, _country: ctry.code, _state: state, _why: why, _pick: state === 'ok' || state === 'warn' });
+      return Object.assign({}, r, {
+        _ctype: hit ? hit.type : ctype,           // 已有客户用看板自己的类型
+        _existType: hit ? hit.type : '',
+        _country: ctry.code,
+        _state: state,
+        _why: why,
+        _pick: state === 'ok' || state === 'warn' || state === 'upd',
+      });
     });
   }
 
@@ -5975,23 +6130,49 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     };
   }
 
+  /* 跟进记录行（写云端 pipe_records）：新客户与已有客户共用。
+     只带本行里非空的字段——空格不覆盖云端已有内容（导入是「补新值」，
+     不是「清空」；要清空某字段请到跟进表里手动删）。 */
+  function pipeRowOf(r, isNew) {
+    const ctype = r._existType || r._ctype;
+    const name = r.name;
+    const row = {
+      id: ctype + '|' + name.replace(/\s+/g, ''),
+      ctype,
+      customer: name,
+      updated_at: new Date().toISOString(),
+      updated_by: who() || '导入',
+    };
+    if (r.stage) row.stage = r.stage;
+    if (r.done) row.done_action = r.done;
+    if (r.next) row.next_action = r.next;
+    if (r.plan) row.plan_date = r.plan;
+    if (r.last) row.last_date = r.last;
+    // 负责人：新客户建记录时带上；更新已有客户时不覆盖原负责人（避免把 Cyan 的客户记到别人名下）
+    if (isNew && r.owner) row.owner = r.owner;
+    return row;
+  }
+
   function importCard() {
     const on = cloudOn();
     const st = IMP;
     const nOk = st ? st.rows.filter((r) => r._pick).length : 0;
+    const nNew = st ? st.rows.filter((r) => r._pick && r._state !== 'upd').length : 0;
+    const nUpd = st ? st.rows.filter((r) => r._state === 'upd').length : 0;
     const nDup = st ? st.rows.filter((r) => r._state === 'dup').length : 0;
     const nBad = st ? st.rows.filter((r) => r._state === 'bad').length : 0;
 
     const preview = !st ? '' : `
       <div class="impstat">
         <span class="chip ok">可导入 ${nOk}</span>
+        ${nUpd ? `<span class="chip blue">更新已有客户跟进 ${nUpd}</span>` : ''}
         ${nDup ? `<span class="chip na">重复跳过 ${nDup}</span>` : ''}
         ${nBad ? `<span class="chip low">缺字段 ${nBad}</span>` : ''}
         <span class="mini muted">识别到 ${st.mapped.length} 列：${st.mapped.map((k) => k).join('、')}</span>
       </div>
       <div class="imptbl-wrap">
         <table class="tbl imptbl">
-          <thead><tr><th style="width:26px"></th><th>客户</th><th>类型</th><th>国家</th><th>优先级</th><th>综合体量</th><th>状态</th></tr></thead>
+          <thead><tr><th style="width:26px"></th><th>客户</th><th>类型</th><th>国家</th><th>优先级</th><th>跟进（阶段 · 最近）</th><th>状态</th></tr></thead>
           <tbody>${st.rows.map((r, i) => `<tr class="${r._state === 'bad' ? 'off' : ''}">
             <td><input type="checkbox" data-imp-idx="${i}"${r._pick ? ' checked' : ''}${r._state === 'bad' ? ' disabled' : ''}></td>
             <td><div class="tname">${esc(r.name || '（无客户名）')}</div>
@@ -5999,28 +6180,28 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
             <td><span class="chip plain">${r._ctype === 'retailer' ? '零售商' : '代理 / 集成商'}</span></td>
             <td>${esc(r._country ? CORE.COUNTRY_CN[r._country] : '未标注')}</td>
             <td>${esc(r.priority || '—')}</td>
-            <td class="mini">${esc((r.scale_text || '').slice(0, 22))}${(r.scale_text || '').length > 22 ? '…' : ''}</td>
-            <td class="mini ${r._state === 'bad' ? 'warn' : ''}">${esc(r._why || (r._state === 'ok' ? '可导入' : ''))}</td>
+            <td class="mini">${r.stage ? esc(r.stage) : '<span class="muted">—</span>'}${r.last ? ' · ' + esc(r.last) : ''}${r.plan ? ' · 计划 ' + esc(r.plan) : ''}</td>
+            <td class="mini ${r._state === 'bad' ? 'warn' : ''}">${r._state === 'upd' ? '<span class="chip blue" style="font-size:10px">更新跟进</span>' : esc(r._why || (r._state === 'ok' ? '可导入' : ''))}</td>
           </tr>`).join('')}</tbody>
         </table>
       </div>
       <div class="entrybar">
-        <button class="btn primary" type="button" id="imp-go"${on && nOk ? '' : ' disabled'}>导入勾选的 ${nOk} 家</button>
+        <button class="btn primary" type="button" id="imp-go"${on && nOk ? '' : ' disabled'}>导入勾选的 ${nOk} 行${nUpd ? '（新增 ' + (nOk - nUpd) + ' · 更新跟进 ' + nUpd + '）' : ''}</button>
         <button class="btn ghost" type="button" id="imp-cancel">取消</button>
       </div>`;
 
     return `<div class="card">
       <div class="card-h"><h3>批量导入客户</h3>
-        <span class="hint">上传和源表同结构的表格（.xlsx / .csv），自动按表头认列、查重、写进云端，导入后立刻出现在看板与跟进表里</span>
+        <span class="hint">上传和源表同结构的表格（.xlsx / .csv），自动按表头认列、查重、写进云端；表格里带「当前阶段 / 已完成动作 / 下一步动作 / 计划跟进 / 最近跟进」的话，新客户建记录、已有客户直接更新跟进</span>
         <div class="right">${on ? '<span class="chip ok">云端已连接</span>' : '<span class="chip na">本机模式 · 不能导入</span>'}</div>
       </div>
       <div class="card-b">
         ${on ? '' : '<div class="notice">批量导入要写云端，请用线上链接打开后再传。</div>'}
         <div class="impdrop" id="impdrop">
           <input type="file" id="imp-file" accept=".xlsx,.csv,text/csv"${on ? '' : ' disabled'}>
-          <div class="mini muted">表头支持：客户名 / 国家 / 优先级 / 一句话简介 / 官网 / 覆盖范围 / 门店数量 / 综合体量 / 头部竞品品牌体量 / Webcam体量 / 是否在合作 / 是否建联 / 备注 …（多余列忽略，缺列不影响）</div>
+          <div class="mini muted">表头支持：客户名 / 国家 / 优先级 / 一句话简介 / 官网 / 覆盖范围 / 门店数量 / 综合体量 / 头部竞品品牌体量 / Webcam体量 / 是否在合作 / 是否建联 / 当前阶段 / 已完成动作 / 下一步动作 / 计划跟进 / 最近跟进 / 备注 …（多余列忽略，缺列不影响）</div>
         </div>
-        <div class="mini muted" style="margin-top:6px">只解析表格，不上传到第三方；解析在本机浏览器内完成。导入前会先给你看一遍预览，重复的、缺名字的会被标出来。</div>
+        <div class="mini muted" style="margin-top:6px">只解析表格，不上传到第三方；解析在本机浏览器内完成。导入前会先给你看一遍预览。<b>已有客户只更新跟进五字段</b>（阶段 / 已完成 / 下一步 / 计划 / 最近），不覆盖它的基础资料与负责人；跟进字段留空的格子不动云端已有内容。</div>
         <!-- 提示条固定渲染：导入成功/解析失败时预览块会整块消失，提示不能跟着一起没 -->
         <div class="impmsg"><span class="mini" id="imp-msg"></span></div>
         ${preview}
@@ -6069,27 +6250,45 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     if (!pick.length) { impMsg('没有可导入的行', true); return; }
     IMP_BUSY = true;
     impMsg('导入中 0 / ' + pick.length + ' …');
-    const done = [];
+    const created = [];     // 新建客户（extra 行）
+    const withPipe = [];   // 新客户同时写进的跟进记录
+    const updated = [];    // 已有客户被更新的跟进
     const failed = [];
     const step = (i) => {
       if (i >= pick.length) {
         IMP_BUSY = false;
         IMP = null;
-        ROWS = ROWS.concat(done);
+        ROWS = ROWS.concat(created);
         lastKey = '';
         rebuild();
-        const msg = '已导入 ' + done.length + ' 家' + (failed.length ? '，失败 ' + failed.length + ' 家：' + failed.slice(0, 3).join('、') : '');
+        if (W.SYNC && W.SYNC.pull) W.SYNC.pull();   // 已有客户的跟进更新靠拉取刷新跟进表/KPI
+        const msg = '已导入：新增 ' + created.length + ' 家'
+          + (withPipe.length ? '（其中 ' + withPipe.length + ' 家带跟进记录）' : '')
+          + (updated.length ? '，更新已有客户跟进 ' + updated.length + ' 家' : '')
+          + (failed.length ? '，失败 ' + failed.length + '：' + failed.slice(0, 3).join('、') : '');
         impMsg(msg, !!failed.length);
         if (W.__toast) W.__toast(msg);
         return;
       }
-      const row = payloadOf(pick[i]);
-      impMsg('导入中 ' + i + ' / ' + pick.length + '：' + row.name);
-      Promise.resolve(W.SYNC.saveExtra(row)).then(() => {
-        done.push(row);
+      const r = pick[i];
+      const isNew = r._state !== 'upd';
+      const extraRow = isNew ? payloadOf(r) : null;
+      const pipeRow = pipeRowOf(r, isNew);
+      const hasPipeRow = !!(pipeRow.stage || pipeRow.done_action || pipeRow.next_action
+        || pipeRow.plan_date || pipeRow.last_date || (isNew && pipeRow.owner));
+      impMsg('导入中 ' + (i + 1) + ' / ' + pick.length + '：' + (r.name || ''));
+      const work = isNew
+        ? Promise.resolve(W.SYNC.saveExtra(extraRow))
+          .then(() => {
+            created.push(extraRow);
+            if (hasPipeRow) return W.SYNC.savePipe([pipeRow]).then(() => { withPipe.push(r.name); });
+          })
+        : (hasPipeRow ? Promise.resolve(W.SYNC.savePipe([pipeRow])) : Promise.resolve());
+      Promise.resolve(work).then(() => {
+        if (!isNew && hasPipeRow) updated.push(r.name);
         step(i + 1);
       }).catch((err) => {
-        failed.push(row.name + '（' + ((err && (err.message || err.code)) || '网络') + '）');
+        failed.push((r.name || '（无名）') + '（' + ((err && (err.message || err.code)) || '网络') + '）');
         step(i + 1);
       });
     };
@@ -6223,6 +6422,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     count: () => APP.customers.filter((c) => c.entry).length,
     /* 批量导入的解析链路对测试开放：CSV 解析 / 表头映射 / 校验 / 组装云端行 */
     parseCsv, readXlsx, toRecords, validate, normCountry, payloadOf,
+    normDate, stageNorm, pipeRowOf,
     importState: () => IMP,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -6288,6 +6488,10 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
   /* 手工录入的新客户单独一张表：源表每次重跑都会覆盖 __DATA__，
      只有存云端才不会被冲掉，也才能多人共享。 */
   const EXTRA_TABLE = 'customers_extra';
+  /* 跟进历史留痕表：每次跟进字段落库后追加一行（不改不删），
+     抽屉里的「跟进历史」时间线读它。库还没建这张表时优雅降级，不影响主流程。 */
+  const HIST_TABLE = 'pipe_history';
+  let HIST_OK = true;   // 目标库缺表后置 false，之后跳过，不再每 6 秒白试
   const SDK_CDN = 'https://cdn.jsdelivr.net/npm/@tencent-ai/workbuddy-cloud-sdk@dev/lib/index.global.js';
 
   function readWho() {
@@ -6310,6 +6514,8 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
       subscribe(fn) { try { fn('local', '', null); } catch (e) {} },
       saveExtra() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
       removeExtra() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
+      savePipe() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
+      hist() { return Promise.resolve({ data: [], missing: true }); },
       enabled: false,
     };
     return;
@@ -6413,10 +6619,11 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
         return sbFetch('GET', '/rest/v1/' + table + '?select=*');
       },
       upsert(row, opts) {
-        const oc = (opts && opts.onConflict) || 'id';
+        const oc = (opts && opts.onConflict) || '';
         const rows = Array.isArray(row) ? row : [row];
-        return sbFetch('POST', '/rest/v1/' + table + '?on_conflict=' + oc, rows,
-          'resolution=merge-duplicates,return=minimal');
+        // 没给 onConflict = 纯插入（追加），历史表用；给了 = merge-duplicates upsert
+        return sbFetch('POST', '/rest/v1/' + table + (oc ? '?on_conflict=' + oc : ''), rows,
+          oc ? 'resolution=merge-duplicates,return=minimal' : 'return=minimal');
       },
       delete() {
         return {
@@ -6499,6 +6706,87 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     return true;
   }
 
+  /* ---------------- 跟进历史留痕 ----------------
+     每次跟进字段落库后追加一行（旧值 → 新值 · 谁 · 何时），只增不改不删。
+     fire-and-forget：留痕写失败不影响主数据；目标库还没建这张表时置 HIST_OK=false，
+     之后跳过，不反复空试。抽屉里的「跟进历史」时间线读它。 */
+  async function logHist(entries) {
+    if (!ready || !cloud || !HIST_OK || !entries || !entries.length) return;
+    try {
+      const r = await cloud.database.from(HIST_TABLE).upsert(entries, {});
+      if (r && r.error) {
+        const sig = String((r.error.code || '') + ' ' + (r.error.message || ''));
+        if (/PGRST205|42P01|404|Could not find/i.test(sig)) HIST_OK = false;
+      }
+    } catch (e) { /* 历史留痕尽力而为，不阻塞主流程 */ }
+  }
+
+  function histMissing(sig) {
+    if (/PGRST205|42P01|404|Could not find/i.test(sig)) { HIST_OK = false; return true; }
+    return false;
+  }
+
+  async function histOf(id) {
+    if (!ready || !cloud) return { data: [], missing: true };
+    if (USE_SB) {
+      const r = await sbFetch('GET', '/rest/v1/' + HIST_TABLE
+        + '?select=hid,field,old_val,new_val,by,at&record_id=eq.' + encodeURIComponent(id)
+        + '&order=at.desc&limit=60');
+      if (r.error) {
+        if (histMissing(String((r.error.code || '') + ' ' + (r.error.message || '')))) return { data: [], missing: true };
+        return { data: [], missing: false };
+      }
+      return { data: r.data || [], missing: false };
+    }
+    /* WorkBuddy 通道：SDK 不带过滤参数，全量拉回后本地筛（该库当前被额度隔离，仅保底） */
+    try {
+      const r = await cloud.database.from(HIST_TABLE).select('*');
+      if (r && r.error) return { data: [], missing: histMissing(String((r.error.code || '') + (r.error.message || ''))) };
+      const rows = (r.data || []).filter((x) => x && x.record_id === id);
+      rows.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+      return { data: rows.slice(0, 60), missing: false };
+    } catch (e) {
+      return { data: [], missing: true };
+    }
+  }
+
+  /* ---------------- 批量写跟进记录（上传表格导入用） ----------------
+     rows 为数据库列形状（id/ctype/customer + 阶段等），逐行 upsert：
+     只带本行非空字段，空格不覆盖云端已有内容；每个发生变化的字段同时写历史。 */
+  const PIPE_COLS = [
+    ['stage', 'stage'], ['done_action', 'done'], ['next_action', 'next'],
+    ['plan_date', 'planDate'], ['last_date', 'lastDate'], ['owner', 'owner'],
+    ['difficulty', 'difficulty'], ['direction', 'direction'], ['verify', 'verify'], ['note', 'note'],
+  ];
+
+  async function savePipe(rows) {
+    if (!ready || !cloud) throw new Error('云端还没连上，稍等两秒再试');
+    const list = (rows || []).filter((r) => r && r.id);
+    if (!list.length) return 0;
+    for (let i = 0; i < list.length; i += 80) {
+      const r = await cloud.database.from(TABLE).upsert(list.slice(i, i + 80), { onConflict: 'id' });
+      if (r.error) throw r.error;
+    }
+    const dbAll = (W.PIPE && W.PIPE.DB) ? W.PIPE.DB() : null;
+    const hist = [];
+    list.forEach((row) => {
+      const old = (dbAll && dbAll[row.id]) || null;
+      PIPE_COLS.forEach((pair) => {
+        const col = pair[0], fk = pair[1];
+        if (row[col] == null || row[col] === '') return;
+        const ov = old ? String(old[fk] == null ? '' : old[fk]) : '';
+        if (ov === String(row[col])) return;   // 没变的字段不留痕，避免导入刷屏
+        hist.push({
+          record_id: row.id, ctype: row.ctype || '', customer: row.customer || '',
+          field: fk, old_val: ov, new_val: String(row[col]),
+          by: row.updated_by || readWho() || '—',
+        });
+      });
+    });
+    if (hist.length) logHist(hist);
+    return list.length;
+  }
+
   /* ---------------- 写回（单字段 upsert） ---------------- */
   function markOk(id, field) {
     if (W.PIPE && W.PIPE.markSynced) W.PIPE.markSynced(id, field);
@@ -6521,12 +6809,22 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     const me = readWho();
     if (me) row.updated_by = me;
 
+    // 留痕用的旧值：写库前先从本地缓存读（缓存是 pull 过的最新状态）
+    const dbAll = (W.PIPE.DB) ? W.PIPE.DB() : null;
+    const oldVal = (dbAll && dbAll[id]) ? String(dbAll[id][field] == null ? '' : dbAll[id][field]) : '';
+    const histEntry = () => ({
+      record_id: id, ctype: c.type || '', customer: c.name,
+      field, old_val: oldVal, new_val: String(value == null ? '' : value),
+      by: row.updated_by || '—',
+    });
+
     // 首次失败大概率是并发建行的瞬时冲突，短退避重试两次再入队
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         await once(row, col);
         markOk(id, field);
         setStatus('online');
+        if (oldVal !== String(value == null ? '' : value)) logHist([histEntry()]);
         return;
       } catch (e) {
         var last = e;
@@ -6536,7 +6834,7 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
 
     setStatus('offline', (last && (last.message || last.code)) || '保存失败');
     if (W.__toast) W.__toast('云端保存失败，已存在本机，联网后自动重试');
-    if (!queue.some((q) => q.id === id && q.col === col)) queue.push({ id, field, col, row });
+    if (!queue.some((q) => q.id === id && q.col === col)) queue.push({ id, field, col, row, old: oldVal });
     scheduleFlush();
   }
 
@@ -6558,6 +6856,14 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
         await once(it.row, it.col);
         markOk(it.id, it.field);
         setStatus('online');
+        // 补写离线期间攒下的历史留痕（旧值取入队时快照）
+        if (it.old != null && it.old !== String(it.row[it.col] == null ? '' : it.row[it.col])) {
+          logHist([{
+            record_id: it.id, ctype: it.row.ctype || '', customer: it.row.customer || '',
+            field: it.field, old_val: it.old, new_val: String(it.row[it.col] == null ? '' : it.row[it.col]),
+            by: it.row.updated_by || '—',
+          }]);
+        }
       } catch (e) {
         queue.push(it);
         setStatus('offline', (e && (e.message || e.code)) || '重试失败');
@@ -6583,6 +6889,8 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     subscribe(fn) { subs.push(fn); try { fn(status, lastErr, lastAt); } catch (e) {} },
     saveExtra,
     removeExtra,
+    savePipe,
+    hist: histOf,
     enabled: true,
   };
 

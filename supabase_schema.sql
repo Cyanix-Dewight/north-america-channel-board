@@ -104,6 +104,36 @@ CREATE POLICY extra_insert ON public.customers_extra FOR INSERT TO anon, authent
 CREATE POLICY extra_update ON public.customers_extra FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY extra_delete ON public.customers_extra FOR DELETE TO anon, authenticated USING (true);
 
+-- ---------- 表三：跟进历史（2026-11 新增，只增不改不删） ----------
+-- 每次跟进字段落库后自动追加一行（旧值→新值 · 谁 · 何时），抽屉里的
+-- 「跟进历史」时间线读它。页面同步写入，无需人工操作。
+-- 注意：这张表可以后补——在旧库上重跑本文件全部内容是幂等的
+-- （IF NOT EXISTS + DROP POLICY IF EXISTS），已建过的表不会被改动。
+CREATE TABLE IF NOT EXISTS public.pipe_history (
+  hid        bigserial PRIMARY KEY,          -- 自增，只增不改
+  record_id  text NOT NULL,                  -- 对应 pipe_records.id
+  ctype      text,
+  customer   text,
+  field      text,                           -- 内部字段名：stage/done/next/planDate/lastDate/owner/difficulty/direction/verify/note
+  old_val    text,
+  new_val    text,
+  by         text,                           -- 填写人
+  at         timestamptz DEFAULT now()
+);
+
+COMMENT ON TABLE public.pipe_history IS '跟进字段修改留痕：只插入，不开放 UPDATE/DELETE，保证历史不可篡改';
+
+CREATE INDEX IF NOT EXISTS pipe_history_rec_idx ON public.pipe_history (record_id, at DESC);
+
+GRANT SELECT, INSERT ON public.pipe_history TO anon, authenticated;   -- 有意不给 UPDATE/DELETE
+
+ALTER TABLE public.pipe_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS hist_read   ON public.pipe_history;
+DROP POLICY IF EXISTS hist_insert ON public.pipe_history;
+CREATE POLICY hist_read   ON public.pipe_history FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY hist_insert ON public.pipe_history FOR INSERT TO anon, authenticated WITH CHECK (true);
+
 -- 执行完成后：
 --   1. python src/migrate_to_supabase.py --check   验证连通
 --   2. python src/migrate_to_supabase.py --seed    灌入本地种子（Evelyn 680 条 + 手工录入 2 家）

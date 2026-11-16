@@ -53,12 +53,17 @@ CREATE TABLE IF NOT EXISTS public.customers_extra (
   coop        text DEFAULT '',               -- 是否在合作
   contact     text DEFAULT '',               -- 是否建联
   extra       text DEFAULT '',               -- 预留扩展
+  created_by  text,                          -- 录入人（WorkBuddy 旧库同名列；页面已改用 updated_by 兜底）
   updated_by  text,
   updated_at  timestamptz DEFAULT now(),
   created_at  timestamptz DEFAULT now()
 );
 
 COMMENT ON TABLE public.customers_extra IS '客户录入页写入的新客户（单人 + 批量导入），不进源表，构建不会被冲掉';
+
+-- 旧库补列（幂等）：2026-11 之前建的库缺 created_by，补上后
+-- 手工录入与批量导入的字段写法和 WorkBuddy 侧完全一致
+ALTER TABLE public.customers_extra ADD COLUMN IF NOT EXISTS created_by text;
 
 -- ---------- 时间戳触发器：updated_at 一律以服务端时钟为准 ----------
 CREATE OR REPLACE FUNCTION public.touch_updated_at()

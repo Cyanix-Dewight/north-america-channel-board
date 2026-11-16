@@ -593,7 +593,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-16 11:22<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-16 14:31<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -2016,8 +2016,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       c.segWhy = '在「客户录入」页手工新增，简介未过自动分类器';
       c.ownerDefault = x.owner || 'Evelyn';
       if (x.ind) { c.ind = x.ind; c.indWhy = '录入时手工指定'; c.indKw = ''; }
-      c.entryBy = x.created_by || '';
-      c.entryAt = x.created_at || '';
+      // 录入人：优先 created_by（WorkBuddy 旧列），Supabase 表没有这列时用 updated_by 兜底
+      c.entryBy = x.created_by || x.updated_by || '';
+      c.entryAt = x.created_at || x.updated_at || '';
     }));
   }
 
@@ -5647,18 +5648,23 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   function rebuild() {
     const keep = snapshot();
-    /* 批量导入的提示条也要跨重绘保留：导入完成后 SYNC.pull() 会带着新数据回来
-       触发一次 ENTRY_APPLY 重建，不保的话「已导入 N 家」提示刚写上就被冲没了。 */
-    const msgEl = document.getElementById('imp-msg');
-    const keepMsg = msgEl ? { t: msgEl.textContent, c: msgEl.style.color } : null;
+    /* 两条提示条都要跨重绘保留：导入完成后 SYNC.pull() 会带着新数据回来
+       触发一次 ENTRY_APPLY 重建，不保的话「已导入 N 家」「已保存：X」刚写上就被冲没了。 */
+    const grab = (id) => {
+      const e = document.getElementById(id);
+      return e ? { t: e.textContent, c: e.style.color } : null;
+    };
+    const keepImp = grab('imp-msg');
+    const keepEf = grab('ef-msg');
     W.__EXTRA__ = ROWS;
     APP.build();
     if (W.UI && W.UI.render) W.UI.render();
     restore(keep);
-    if (keepMsg && keepMsg.t) {
-      const m2 = document.getElementById('imp-msg');
-      if (m2) { m2.textContent = keepMsg.t; m2.style.color = keepMsg.c || '#067647'; }
-    }
+    [[keepImp, 'imp-msg'], [keepEf, 'ef-msg']].forEach(([k, id]) => {
+      if (!k || !k.t) return;
+      const m2 = document.getElementById(id);
+      if (m2) { m2.textContent = k.t; m2.style.color = k.c || '#067647'; }
+    });
     paintSub();
   }
 
@@ -6349,7 +6355,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       return;
     }
     busy = true;
-    row.created_by = who();
+    /* 不再单独写 created_by：Supabase 的 customers_extra 建表时没有这一列（WorkBuddy 旧库有），
+       多带一个未知列会被 PostgREST 直接拒绝整行（400 Could not find the 'created_by' column）。
+       录入人改由 updated_by 承担（创建时就是 who()），列表展示走 updated_by 兜底。 */
     msg('保存中…');
     Promise.resolve(W.SYNC.saveExtra(row)).then(() => {
       busy = false;

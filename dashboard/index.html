@@ -593,7 +593,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-13 18:04<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-16 11:22<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -5854,8 +5854,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     return s;
   }
 
-  /* 一行里的跟进字段是否值得写（五个字段任一非空） */
-  const hasPipe = (r) => !!(r.stage || r.done || r.next || r.plan || r.last);
+  /* 一行里的跟进字段是否值得写（六个字段任一非空，含负责人） */
+  const hasPipe = (r) => !!(r.stage || r.done || r.next || r.plan || r.last || r.owner);
 
   const normHead = (s) => String(s == null ? '' : s).replace(/\s+/g, '').replace(/（/g, '(').replace(/）/g, ')').toLowerCase();
 
@@ -6148,8 +6148,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     if (r.next) row.next_action = r.next;
     if (r.plan) row.plan_date = r.plan;
     if (r.last) row.last_date = r.last;
-    // 负责人：新客户建记录时带上；更新已有客户时不覆盖原负责人（避免把 Cyan 的客户记到别人名下）
-    if (isNew && r.owner) row.owner = r.owner;
+    // 负责人：新客户与已有客户都随表更新（2026-11 按需求放开）。
+    // 留空的格子仍然不清空——要改派负责人就在表里写上新名字，要清空去跟进表手动删。
+    if (r.owner) row.owner = r.owner;
     return row;
   }
 
@@ -6172,7 +6173,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       </div>
       <div class="imptbl-wrap">
         <table class="tbl imptbl">
-          <thead><tr><th style="width:26px"></th><th>客户</th><th>类型</th><th>国家</th><th>优先级</th><th>跟进（阶段 · 最近）</th><th>状态</th></tr></thead>
+          <thead><tr><th style="width:26px"></th><th>客户</th><th>类型</th><th>国家</th><th>优先级</th><th>负责人</th><th>跟进（阶段 · 最近）</th><th>状态</th></tr></thead>
           <tbody>${st.rows.map((r, i) => `<tr class="${r._state === 'bad' ? 'off' : ''}">
             <td><input type="checkbox" data-imp-idx="${i}"${r._pick ? ' checked' : ''}${r._state === 'bad' ? ' disabled' : ''}></td>
             <td><div class="tname">${esc(r.name || '（无客户名）')}</div>
@@ -6180,6 +6181,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
             <td><span class="chip plain">${r._ctype === 'retailer' ? '零售商' : '代理 / 集成商'}</span></td>
             <td>${esc(r._country ? CORE.COUNTRY_CN[r._country] : '未标注')}</td>
             <td>${esc(r.priority || '—')}</td>
+            <td>${r.owner ? esc(r.owner) : '<span class="mini muted">不动</span>'}</td>
             <td class="mini">${r.stage ? esc(r.stage) : '<span class="muted">—</span>'}${r.last ? ' · ' + esc(r.last) : ''}${r.plan ? ' · 计划 ' + esc(r.plan) : ''}</td>
             <td class="mini ${r._state === 'bad' ? 'warn' : ''}">${r._state === 'upd' ? '<span class="chip blue" style="font-size:10px">更新跟进</span>' : esc(r._why || (r._state === 'ok' ? '可导入' : ''))}</td>
           </tr>`).join('')}</tbody>
@@ -6192,16 +6194,16 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
     return `<div class="card">
       <div class="card-h"><h3>批量导入客户</h3>
-        <span class="hint">上传和源表同结构的表格（.xlsx / .csv），自动按表头认列、查重、写进云端；表格里带「当前阶段 / 已完成动作 / 下一步动作 / 计划跟进 / 最近跟进」的话，新客户建记录、已有客户直接更新跟进</span>
+        <span class="hint">上传和源表同结构的表格（.xlsx / .csv），自动按表头认列、查重、写进云端；表格里带「当前阶段 / 已完成动作 / 下一步动作 / 计划跟进 / 最近跟进 / 负责人」的话，新客户建记录、已有客户直接更新跟进</span>
         <div class="right">${on ? '<span class="chip ok">云端已连接</span>' : '<span class="chip na">本机模式 · 不能导入</span>'}</div>
       </div>
       <div class="card-b">
         ${on ? '' : '<div class="notice">批量导入要写云端，请用线上链接打开后再传。</div>'}
         <div class="impdrop" id="impdrop">
           <input type="file" id="imp-file" accept=".xlsx,.csv,text/csv"${on ? '' : ' disabled'}>
-          <div class="mini muted">表头支持：客户名 / 国家 / 优先级 / 一句话简介 / 官网 / 覆盖范围 / 门店数量 / 综合体量 / 头部竞品品牌体量 / Webcam体量 / 是否在合作 / 是否建联 / 当前阶段 / 已完成动作 / 下一步动作 / 计划跟进 / 最近跟进 / 备注 …（多余列忽略，缺列不影响）</div>
+          <div class="mini muted">表头支持：客户名 / 国家 / 优先级 / 一句话简介 / 官网 / 覆盖范围 / 门店数量 / 综合体量 / 头部竞品品牌体量 / Webcam体量 / 是否在合作 / 是否建联 / 当前阶段 / 已完成动作 / 下一步动作 / 计划跟进 / 最近跟进 / 负责人 / 备注 …（多余列忽略，缺列不影响）</div>
         </div>
-        <div class="mini muted" style="margin-top:6px">只解析表格，不上传到第三方；解析在本机浏览器内完成。导入前会先给你看一遍预览。<b>已有客户只更新跟进五字段</b>（阶段 / 已完成 / 下一步 / 计划 / 最近），不覆盖它的基础资料与负责人；跟进字段留空的格子不动云端已有内容。</div>
+        <div class="mini muted" style="margin-top:6px">只解析表格，不上传到第三方；解析在本机浏览器内完成。导入前会先给你看一遍预览。<b>已有客户只更新跟进六字段</b>（阶段 / 已完成 / 下一步 / 计划 / 最近 / 负责人），不动它的基础资料；所有跟进格（含负责人）<b>留空 = 不动云端已有内容</b>，写新值 = 覆盖。</div>
         <!-- 提示条固定渲染：导入成功/解析失败时预览块会整块消失，提示不能跟着一起没 -->
         <div class="impmsg"><span class="mini" id="imp-msg"></span></div>
         ${preview}
@@ -6275,7 +6277,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       const extraRow = isNew ? payloadOf(r) : null;
       const pipeRow = pipeRowOf(r, isNew);
       const hasPipeRow = !!(pipeRow.stage || pipeRow.done_action || pipeRow.next_action
-        || pipeRow.plan_date || pipeRow.last_date || (isNew && pipeRow.owner));
+        || pipeRow.plan_date || pipeRow.last_date || pipeRow.owner);
       impMsg('导入中 ' + (i + 1) + ' / ' + pick.length + '：' + (r.name || ''));
       const work = isNew
         ? Promise.resolve(W.SYNC.saveExtra(extraRow))

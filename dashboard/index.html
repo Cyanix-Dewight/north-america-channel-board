@@ -612,6 +612,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 .notice.bad{background:#FEF2F2;border-color:#F6C6C6;color:#8F1D1D}
 .notice.bad a{color:#B42318;text-decoration:underline}
 .cloudupt{margin:0 0 12px;line-height:1.6}
+.pill.green{background:#ECFDF3;color:#067647;border-color:#ABEFC6}
+.pill.red{background:#FEF2F2;color:#B42318;border-color:#F6C6C6}
 
 </style>
 </head>
@@ -622,11 +624,12 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 13:52<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 14:20<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
       <span class="pill" id="pill-count">—</span>
+      <span class="pill" id="pill-cloud" title="云端同步状态">—</span>
       <div class="typesw" id="type-switch" title="切换客户类型（当前类型的数据与页签随之切换）"><button data-t="retailer">零售商</button><button data-t="agent">代理 / 集成商</button></div>
     </div>
   </div>
@@ -3840,10 +3843,50 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     </div>`;
   }
 
+  /* 页头的云端状态胶囊：让「我看到的是哪一版、云端有没有连上」一眼可查。
+     之前这些信息只藏在「开发跟进」页的小角标里，出问题时很难自证。 */
+  function paintCloudPill() {
+    const p = el('pill-cloud');
+    if (!p) return;
+    const S = W.SYNC;
+    const build = (document.querySelector('.sub') || {}).textContent || '';
+    const bt = (build.match(/构建于\s*([\d-]+\s[\d:]+)/) || ['', '未知'])[1];
+    const exN = W.ENTRY ? W.ENTRY.rows().length : 0;
+    const pipeN = W.PIPE && W.PIPE.DB ? Object.keys(W.PIPE.DB()).length : 0;
+    const who = S && S.who ? S.who() : '';
+    const tip = [
+      '当前网址：' + location.origin + location.pathname,
+      '页面构建：' + bt,
+      '同步通道：' + (S && S.provider ? S.provider() : 'workbuddy'),
+      '云端新客户：' + exN + ' 家 · 跟进记录：' + pipeN + ' 条',
+      '填写人：' + (who || '未填'),
+    ].join('\n');
+    const dot = '<span class="dot"></span>';
+    if (!S || !S.enabled) {
+      p.className = 'pill gray';
+      p.innerHTML = dot + '本机模式 · 看不到同事上传';
+      p.title = tip + '\n本机模式（双击打开文件 / 未连上云端）不会读取云端数据。';
+      return;
+    }
+    const iss = S.issue ? S.issue() : '';
+    if (iss) {
+      p.className = 'pill red';
+      p.innerHTML = dot + '云端读取失败 · 只显示内置名单';
+      p.title = tip + '\n原因：' + iss;
+      return;
+    }
+    const at = S.lastAt ? S.lastAt() : null;
+    const hhmm = at ? String(at.getHours()).padStart(2, '0') + ':' + String(at.getMinutes()).padStart(2, '0') : '';
+    p.className = 'pill green';
+    p.innerHTML = dot + '云端 ' + exN + ' 家新客户' + (hhmm ? ' · ' + hhmm + ' 已同步' : '');
+    p.title = tip;
+  }
+
   function render() {
     // 下拉先重建：新录入客户的国家、各地区家数要立刻反映出来（放在 box 判断前，
     // 免得某个视图容器缺失时连筛选栏都不更新）
     paintGeoFilters();
+    paintCloudPill();
     const list = APP.filtered();
     const box = el('view-' + state.view);
     if (!box) return;
@@ -6055,6 +6098,16 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       .sort((a, b) => String(b.entryAt || '').localeCompare(String(a.entryAt || '')));
     const nR = rows.filter((c) => c.type === 'retailer').length;
     const nA = rows.length - nR;
+    /* 这一页列的是两侧全部录入客户，而 P 码总表 / 客户主表只列当前类型。
+       不加说明就很容易被看成「上传成功了但表里没有」——其实只是站在另一侧看。 */
+    const isR = !!(UI() && UI().IS_R);
+    const other = isR ? nA : nR;
+    const otherName = isR ? '代理 / 集成商' : '零售商';
+    const sideHint = other
+      ? `<div class="notice sidehint" style="margin-bottom:10px">本页列出<b>两侧全部</b>录入客户（零售商 ${nR} · 代理/集成商 ${nA}）。`
+        + `「P 码总表 / 客户主表 / 地图」只显示<b>当前类型</b>，另有 <b>${other} 家</b>在另一侧 —— `
+        + `点右上角切到「<b>${otherName}</b>」就能看到它们。</div>`
+      : '';
     const body = rows.length ? `<table class="tbl">
       <thead><tr><th>客户</th><th>类型</th><th>国家</th><th>目标行业</th><th>优先级</th><th>负责人</th><th>录入人 · 时间</th><th></th></tr></thead>
       <tbody>${rows.map((c) => `<tr>
@@ -6074,7 +6127,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <span class="hint">存在云端 customers_extra 表，不会被源表更新冲掉</span>
         <div class="right mini muted">共 ${rows.length} 家 · 代理 ${nA} / 零售 ${nR}</div>
       </div>
-      <div class="card-b">${body}</div>
+      <div class="card-b">${sideHint}${body}</div>
     </div>`;
   }
 

@@ -153,6 +153,12 @@ CREATE TABLE IF NOT EXISTS public.customer_overrides (
   updated_at  timestamptz DEFAULT now()
 );
 
+-- 2026-11-18 追加：原表字段逐格覆盖（键 = 原表列名，如 {"国家":"DE","门店数量":"约 1,000 家"}）
+--   值 '' = 显式清空该格；缺键 / 空对象 = 不覆盖；撤销 = 把键删掉（抽屉里的「恢复原表」）
+--   客户名不参与覆盖：跟进记录与覆盖记录的 id 都是「类型|客户名」，改名会让历史记录变孤儿
+ALTER TABLE public.customer_overrides ADD COLUMN IF NOT EXISTS fields jsonb;
+COMMENT ON COLUMN public.customer_overrides.fields IS '原表字段覆盖：键为原表列名；值空串=显式清空；缺键=不覆盖';
+
 COMMENT ON TABLE public.customer_overrides IS '看板内人工覆盖的优先级与综合体量；构建后由 model.js 叠加，源表值保留可撤销';
 
 DROP TRIGGER IF EXISTS ovr_touch_ts ON public.customer_overrides;

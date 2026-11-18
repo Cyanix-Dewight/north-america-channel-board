@@ -608,6 +608,32 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 .ovrbar .btn{margin-left:auto}
 @media (max-width:760px){.ovrsect .dfgrid{grid-template-columns:1fr}}
 
+/* ---- 抽屉里的「原表字段」逐格编辑（customer_overrides.fields） ---- */
+.rawgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+.rfld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.rfld.full{grid-column:1/-1}
+.rfld > .lb{display:flex;align-items:baseline;justify-content:space-between;gap:8px;min-height:15px}
+.rfld > .lb > span:first-child{font-size:11.5px;font-weight:600;color:#475467;letter-spacing:.02em}
+.rfld > .lb .tag{font-size:9.5px;color:#6D28D9;background:#EDE9FE;border-radius:4px;padding:0 4px;line-height:14px;font-weight:500}
+.rawgrid input,.rawgrid select,.rawgrid textarea{
+  width:100%;box-sizing:border-box;padding:5px 7px;border:1px solid var(--line);border-radius:6px;
+  background:#fff;font:inherit;font-size:11.5px;line-height:1.5;color:var(--ink);resize:vertical}
+.rawgrid textarea{min-height:32px}
+.rawgrid input:hover,.rawgrid select:hover,.rawgrid textarea:hover{border-color:#B9C0CC}
+.rawgrid input:focus,.rawgrid select:focus,.rawgrid textarea:focus{
+  outline:none;border-color:var(--brand-2);box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+.rawgrid input::placeholder,.rawgrid textarea::placeholder{color:#B4BDCB}
+.rawgrid [disabled]{background:#F9FAFB;color:#98A2B3;cursor:not-allowed}
+.rawgrid select{cursor:pointer;height:27px;padding:2px 6px}
+.rfro{padding:5px 7px;border:1px dashed var(--line);border-radius:6px;background:#FAFBFC;
+  font-size:11.5px;color:var(--ink-2);line-height:1.5;word-break:break-word}
+.rfsrc{margin-top:2px;font-size:10.5px;color:var(--ink-3);line-height:1.5;word-break:break-word}
+.rfsrc b{color:var(--ink-2);font-weight:600}
+.rfsrc.lockline{color:#98A2B3}
+.rawsect h4 .btn.xs{margin-left:auto}
+.btn.xs{padding:2px 6px;font-size:10px;border-radius:5px}
+@media (max-width:760px){.rawgrid{grid-template-columns:1fr}}
+
 /* 云端读取失败的顶部警告（每个页面都显示，不再静默） */
 .notice.bad{background:#FEF2F2;border-color:#F6C6C6;color:#8F1D1D}
 .notice.bad a{color:#B42318;text-decoration:underline}
@@ -629,7 +655,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 18:07<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 19:00<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -2116,6 +2142,61 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     }));
   }
 
+  /* 人工覆盖：原表字段（国家 / 一句话简介 / 官网 / 门店数量 / 覆盖范围 / 备注…任意列）。
+     存在 customer_overrides.fields（jsonb），键就是原表列名，所以零售侧、代理侧不同的列名都能覆盖，
+     将来 Excel 加列也不用改代码。
+
+     为什么必须在 build 之前打到「行」上，而不是 build 完再改字段：
+     总部经纬度是从简介解析的、地区是从国家推的、体量要折美元分档、SKU 要从竞品原文统计、
+     行业从简介判定 —— 只改 c.raw 显示会「改了但没生效」。打在行上，下游全部按新值重算。
+
+     两种语义要分清（和优先级/体量的「清空=撤销」不同）：
+       · 值 '' = 显式清空这一格（页面显示「空」），并记一条覆盖；
+       · 把键从 fields 里删掉（抽屉里的「恢复原表」）= 撤销这项覆盖，回到源表值。
+     客户名不参与覆盖：跟进记录与覆盖记录的 id 都是「类型|客户名」，改名会让历史记录变孤儿。 */
+  const okey = (v) => String(v == null ? '' : v).replace(/\s+/g, '');
+  let FOVR_INFO = { retailer: {}, agent: {} };
+
+  function parseFields(f) {
+    if (!f) return null;
+    if (typeof f === 'string') { try { f = JSON.parse(f); } catch (e) { return null; } }
+    return f && typeof f === 'object' && !Array.isArray(f) ? f : null;
+  }
+
+  function applyFieldOverrides(rows, sheet, type) {
+    const H = sheet.headers;
+    const iName = H.indexOf('客户名');
+    if (iName < 0) return rows;
+    const m = {};
+    OVR().forEach((x) => {
+      if (!x || !x.id) return;
+      const f = parseFields(x.fields);
+      if (!f) return;
+      const ks = Object.keys(f).filter((k) => H.indexOf(k) >= 0 && k !== '客户名');
+      if (!ks.length) return;
+      m[okey(x.customer)] = { f: f, ks: ks, by: x.updated_by || '', at: String(x.updated_at || '').slice(0, 16).replace('T', ' ') };
+    });
+    if (!Object.keys(m).length) return rows;
+    return rows.map((r) => {
+      const hit = m[okey(r[iName])];
+      if (!hit) return r;
+      const out = r.slice();
+      const info = {};
+      hit.ks.forEach((k) => {
+        const i = H.indexOf(k);
+        info[k] = { from: out[i] == null ? '' : String(out[i]), by: hit.by, at: hit.at };
+        out[i] = hit.f[k] == null ? '' : String(hit.f[k]);
+      });
+      FOVR_INFO[type][okey(out[iName])] = info;
+      return out;
+    });
+  }
+
+  function attachFieldOvr(list, type) {
+    const bag = FOVR_INFO[type] || {};
+    list.forEach((c) => { c.fovr = bag[okey(c.name)] || null; });
+  }
+
   /* 人工覆盖（看板上直接改的优先级 / 综合体量）。
      键与跟进记录同一套：`类型|去空白客户名`。
      - 空字符串 = 撤销这一项覆盖，回到源表值（不是「改成空」）；
@@ -2164,11 +2245,14 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   function build() {
     const exR = EXTRA().filter((x) => x.ctype === 'retailer' && x.name).map((x) => extraRow('retailer', x));
     const exA = EXTRA().filter((x) => x.ctype === 'agent' && x.name).map((x) => extraRow('agent', x));
-    const rowsR = exR.length ? S1.rows.concat(exR) : S1.rows;
-    const rowsA = exA.length ? S2.rows.concat(exA) : S2.rows;
+    FOVR_INFO = { retailer: {}, agent: {} };
+    const rowsR = applyFieldOverrides(exR.length ? S1.rows.concat(exR) : S1.rows, S1, 'retailer');
+    const rowsA = applyFieldOverrides(exA.length ? S2.rows.concat(exA) : S2.rows, S2, 'agent');
     APP.retailers = rowsR.map((r, i) => markIndustry(markLead(buildRetailer(r, i), 'retailer', i), 'retailer')).filter((c) => c.name);
     APP.agents = rowsA.map((r, i) => markIndustry(markLead(buildAgent(r, i), 'agent', i), 'agent')).filter((c) => c.name);
     markEntries();
+    attachFieldOvr(APP.retailers, 'retailer');
+    attachFieldOvr(APP.agents, 'agent');
     applyOverrides();
     APP.retailers.forEach((c) => { if (c.batch !== 'new') c.action = retailerAction(c); });
     APP.agents.forEach((c) => {
@@ -3166,7 +3250,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   function ovrApply(rows) {
     const xs = Array.isArray(rows) ? rows : [];
-    const key = JSON.stringify(xs.map((x) => [x.id, x.p || '', x.scale_text || '', x.updated_at || '']).sort());
+    const key = JSON.stringify(xs.map((x) => [x.id, x.p || '', x.scale_text || '', x.updated_at || '',
+      x.fields && typeof x.fields === 'object' ? JSON.stringify(x.fields) : '']).sort());
     if (key === ovrLastKey) return;   // 内容没变就别重建，免得打断正在填的格子
     ovrLastKey = key;
     OVR_ROWS = xs;
@@ -3189,6 +3274,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const row = {
       id: key, ctype: c.type, customer: c.name,
       p: prev.p || '', scale_text: prev.scale_text || '',
+      fields: (prev.fields && typeof prev.fields === 'object') ? prev.fields : null,
       updated_by: (W.SYNC.who ? W.SYNC.who() : '') || '',
       updated_at: new Date().toISOString(),
     };
@@ -3205,6 +3291,95 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       if (W.SYNC.logHist) W.SYNC.logHist([hist]);
       // 抽屉开着同一家：重画一次，让折算结果 / 源表对照 / 撤销按钮同步更新
       if (drawerId === c.id && el('drawer') && el('drawer').classList.contains('on')) openDrawer(c.id);
+      return true;
+    }).catch((err) => {
+      if (W.__toast) W.__toast('保存失败：' + ((err && (err.message || err.code)) || '网络或权限'));
+      return false;
+    });
+  }
+
+  /* ---------- 原表字段覆盖（抽屉里逐格改） ----------
+     写 customer_overrides.fields 的一个键（键 = 原表列名）。
+       · 传 value   = 改成这个值；若值等于源表原值，等价于撤销（不存冗余覆盖）
+       · 传 undefined = 「恢复原表」，把键删掉，回到源表值
+       · 传 ''      = 显式清空这一格（显示「空」，并标人工覆盖）
+     客户名 / 优先级 / 综合体量不在这里改：前者的 id 会牵动跟进记录，后两者有专门控件（要重算 P 档）。 */
+  const RF_LOCK = {
+    '客户名': '客户名是跟进记录与覆盖记录的主键，改名会让历史记录变孤儿；要改名请在 Excel 里改后重跑 update.py',
+    '优先级': '在上面「优先级与综合体量」里改（会同步重算 P 档与 KPI）',
+    '综合体量': '在上面「优先级与综合体量」里改（填原文，自动折美元并重新分档）',
+  };
+  const rawVal = (c, k) => String((c.raw && c.raw[k] != null) ? c.raw[k] : '');
+
+  function fieldSet(c, name, value) {
+    if (!c || !name || RF_LOCK[name]) return Promise.resolve(false);
+    if (!canOvr()) {
+      if (W.__toast) W.__toast('本机模式不能保存，请用线上链接打开');
+      return Promise.resolve(false);
+    }
+    const prev = ovrOf(c) || {};
+    const fields = Object.assign({}, (prev.fields && typeof prev.fields === 'object') ? prev.fields : {});
+    const info = (c.fovr && c.fovr[name]) || null;
+    const orig = String(info ? info.from : rawVal(c, name));
+    const now = rawVal(c, name);                 // 当前页面显示的值（可能已被覆盖）
+    let act = '改';
+
+    if (value === undefined) {                   // 恢复原表
+      if (!info) return Promise.resolve(false);
+      delete fields[name];
+      act = '恢复原表';
+    } else {
+      const v = String(value == null ? '' : value).trim();
+      if (v === now.trim()) return Promise.resolve(false);   // 没变，不写也不留痕
+      if (v === orig.trim()) { delete fields[name]; act = '恢复原表'; }
+      else { fields[name] = v; act = '改'; }
+    }
+
+    const key = ovrKey(c);
+    const row = {
+      id: key, ctype: c.type, customer: c.name,
+      p: prev.p || '', scale_text: prev.scale_text || '',
+      fields: Object.keys(fields).length ? fields : null,
+      updated_by: (W.SYNC.who ? W.SYNC.who() : '') || '',
+      updated_at: new Date().toISOString(),
+    };
+    const hist = {
+      record_id: key, ctype: c.type, customer: c.name,
+      field: '原表·' + name, old_val: now, new_val: String(row.fields ? fields[name] : orig || ''),
+      by: row.updated_by || '—',
+    };
+    return Promise.resolve(W.SYNC.saveOvr(row)).then(() => {
+      OVR_ROWS = OVR_ROWS.filter((x) => x.id !== key).concat([row]);
+      ovrLastKey = '';
+      ovrRebuild();
+      if (W.SYNC.logHist) W.SYNC.logHist([hist]);
+      if (drawerId === c.id && el('drawer') && el('drawer').classList.contains('on')) openDrawer(c.id);
+      if (W.__toast) W.__toast(act === '恢复原表' ? '「' + name + '」已恢复源表值' : '已保存「' + name + '」');
+      return true;
+    }).catch((err) => {
+      if (W.__toast) W.__toast('保存失败：' + ((err && (err.message || err.code)) || '网络或权限'));
+      return false;
+    });
+  }
+
+  /* 一次撤销这一家的全部原表字段覆盖 */
+  function fieldRevertAll(c) {
+    if (!c || !canOvr() || !c.fovr) return Promise.resolve(false);
+    const prev = ovrOf(c) || {};
+    const key = ovrKey(c);
+    const row = {
+      id: key, ctype: c.type, customer: c.name,
+      p: prev.p || '', scale_text: prev.scale_text || '',
+      fields: null,
+      updated_by: (W.SYNC.who ? W.SYNC.who() : '') || '',
+      updated_at: new Date().toISOString(),
+    };
+    return Promise.resolve(W.SYNC.saveOvr(row)).then(() => {
+      OVR_ROWS = OVR_ROWS.filter((x) => x.id !== key).concat([row]);
+      ovrLastKey = '';
+      ovrRebuild();
+      if (drawerId === c.id && el('drawer') && el('drawer').classList.contains('on')) openDrawer(c.id);
+      if (W.__toast) W.__toast('已恢复全部原表字段');
       return true;
     }).catch((err) => {
       if (W.__toast) W.__toast('保存失败：' + ((err && (err.message || err.code)) || '网络或权限'));
@@ -3466,13 +3641,52 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <div><div class="dn">${['品类契合', '渠道体量', '推进阶段'][i]}</div><div class="ev">${esc(f.why)}</div></div>
         <div class="sc">${f.v}</div></div>`).join('') : '';
 
-    const rawRows = Object.entries(c.raw || {}).map(([k, v]) => {
-      let show;
-      if (v === null || v === '') show = '<span class="mini muted">空</span>';
-      else if (k === '官网' && site) show = `<a href="${esc(site)}" target="_blank" rel="noopener noreferrer">${esc(v)} ↗</a>`;
-      else show = esc(v);
-      return `<dt>${esc(k)}</dt><dd>${show}</dd>`;
-    }).join('');
+    /* ---------- 原表字段：逐格可改 ----------
+       直接写 customer_overrides.fields（键 = 原表列名），model 在 build 之前打到行上，
+       所以改「国家」会重排地区 / 地图，改「一句话简介」会重新解析总部，改体量相关会重新折美元分档。
+       零售侧与代理侧列名不同（覆盖范围/覆盖区域、头部竞品品牌体量/相关产品线体量…），
+       这里按 c.raw 的实际键渲染，不写死列名，将来 Excel 加列也不用改代码。 */
+    const rfEditable = canOvr();
+    const RF_BOOL = { '是否有门店': 1, '是否在售webcam': 1, '是否在合作': 1, '是否建联': 1, '是否代理直接竞品': 1 };
+    const RF_ROWS = {
+      '一句话简介': 3, '覆盖范围': 3, '覆盖区域': 3, '头部竞品品牌体量': 3,
+      'Webcam体量（可推测/预估）': 2, '相关产品线体量（可推测/预估）': 2,
+      '综合体量': 2, '备注': 2, '主要品类': 2, '合作竞品': 2, '相关产品线': 2,
+    };
+    const RF_FULL = {
+      '一句话简介': 1, '覆盖范围': 1, '覆盖区域': 1, '备注': 1,
+      '头部竞品品牌体量': 1, 'Webcam体量（可推测/预估）': 1, '相关产品线体量（可推测/预估）': 1,
+    };
+    const fovrCount = c.fovr ? Object.keys(c.fovr).length : 0;
+
+    const rfld = (k) => {
+      const v = rawVal(c, k);
+      const info = (c.fovr && c.fovr[k]) || null;
+      const lock = RF_LOCK[k];
+      const dis = (!rfEditable || lock) ? ' disabled' : '';
+      let ctl;
+      if (lock) {
+        ctl = `<div class="rfro">${v ? esc(v) : '<span class="mini muted">空</span>'}</div>`;
+      } else if (RF_BOOL[k]) {
+        const cur = String(v).trim();
+        const opts = ['', '是', '否'];
+        if (cur && opts.indexOf(cur) < 0) opts.push(cur);   // 原表写了奇怪的值也不丢
+        ctl = `<select data-rf="${esc(k)}"${dis}>${opts.map((o) =>
+          `<option value="${esc(o)}"${o === cur ? ' selected' : ''}>${o === '' ? '（空 / 未填）' : esc(o)}</option>`).join('')}</select>`;
+      } else if (RF_ROWS[k]) {
+        ctl = `<textarea rows="${RF_ROWS[k]}" data-rf="${esc(k)}" placeholder="（空）"${dis}>${esc(v)}</textarea>`;
+      } else {
+        ctl = `<input data-rf="${esc(k)}" value="${esc(v)}" placeholder="（空）"${k === '官网' ? ' type="url"' : ''}${dis}>`;
+      }
+      return `<div class="rfld${RF_FULL[k] ? ' full' : ''}">
+        <span class="lb"><span>${esc(k)}</span>${info ? '<span class="tag">人工覆盖</span>' : ''}</span>
+        ${ctl}
+        ${lock ? `<div class="rfsrc lockline">${esc(lock)}</div>` : ''}
+        ${info ? `<div class="rfsrc">源表：<b>${info.from ? esc(info.from) : '空'}</b>${info.by ? ' · ' + esc(info.by) : ''}${info.at ? ' · ' + esc(info.at) : ''}${rfEditable ? ` <button class="btn ghost xs" data-rfr="${esc(k)}">恢复原表</button>` : ''}</div>` : ''}
+      </div>`;
+    };
+
+    const rawRows = Object.keys(c.raw || {}).map(rfld).join('');
 
     const ladder = (IS_R && sm.lines.webcam.length) ? priceLadder(
       sm.lines.webcam.slice(0, 8).map((x) => ({ brand: x.brand, sku: x.sku, lo: x.lo, hi: x.hi })),
@@ -3611,7 +3825,16 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           ${skuRows}
         </div>
 
-        <div class="sect"><h4>原表字段</h4><dl class="kv">${rawRows}</dl></div>
+        <div class="sect rawsect" id="df-raw">
+          <h4>原表字段 <span class="mini muted">（逐格可改 · 改完自动保存并同步给所有人${
+            fovrCount ? ' · 已改 ' + fovrCount + ' 项' : ''}${rfEditable ? '' : ' · 本机模式只读'}）</span>
+            ${fovrCount && rfEditable ? '<button class="btn ghost xs" data-rfr-all="1">全部恢复原表</button>' : ''}
+          </h4>
+          <div class="rawgrid">${rawRows}</div>
+          <div class="note" style="margin-top:8px">改动<b>不只改显示</b>：改「国家」会重排地区与地图，改「一句话简介」会重新解析总部坐标与目标行业，
+            改「头部竞品品牌体量」会重新统计 SKU —— 上游一变，下游全部按新值重算。空值不会写成 0。<br>
+            <b>客户名</b>不在此改：跟进记录、覆盖记录的主键都是「类型 + 客名」，改名会让历史记录变孤儿。</div>
+        </div>
       </div>`;
     box.classList.add('on');
     el('scrim').classList.add('on');
@@ -3629,6 +3852,23 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       Promise.all(done).then(() => { if (W.__toast) W.__toast('已撤销覆盖，回到源表值'); });
     }));
     bindDrawerEdits(box, c);
+    /* 原表字段：失焦（文本框）或选中（下拉）即保存，不用点确认按钮 */
+    $$('[data-rf]', box).forEach((inp) => {
+      inp.addEventListener('change', () => { if (c) fieldSet(c, inp.getAttribute('data-rf'), inp.value); });
+    });
+    $$('[data-rfr]', box).forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!c) return;
+      const k = b.getAttribute('data-rfr');
+      if (!window.confirm('把「' + k + '」恢复成源表原值？（会删掉这一项人工覆盖）')) return;
+      fieldSet(c, k, undefined);
+    }));
+    $$('[data-rfr-all]', box).forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!c) return;
+      if (!window.confirm('把「' + c.name + '」的所有原表字段恢复成源表值？')) return;
+      fieldRevertAll(c);
+    }));
     loadHist(box, c);
   }
 
@@ -3825,6 +4065,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
             行业标签后面就多出一枚「PK Distrubution 代理」标签，P 码总表、开发跟进表、客户主表、抽屉头部都显示；悬停给出命中的备注原句，方便核对。
             识别不到就不显示——「我们是代理商」「增值分销代理商」「代理业务占比 60%」这类只描述身份的写法<b>不会</b>被误当成代理方。</li>
         <li><b>优先级与综合体量可在看板里直接改</b>：P 码总表 / 客户主表里点下拉与输入框即可，客户详情里也有同一组控件。改动存云端覆盖表，所有人 6 秒内看到，KPI、分档、图表、筛选同步重算；<b>源表原值保留可对照</b>，清空该格即撤销覆盖、回到源表值。体量填<b>原文</b>，按同一套汇率自动折美元并重新分档；原文里没有金额就如实变成「未量化」，不编数字。被人工改过的行会带一个「改」标记。</li>
+        <li><b>原表字段也能直接改</b>（客户详情最下面一节）：除<b>客户名</b>（跟进记录与覆盖记录的 id 都是「类型 + 客名」，改名会让历史变孤儿）、<b>优先级 / 综合体量</b>（有专用控件，要重算 P 档）外，每一格都能改，失焦即保存。改动存 <code>customer_overrides.fields</code>，<b>在 build 之前打到行上</b>。所以不是只改显示：改「国家」→ 地区归属、国家下拉、地图分组重算；改「一句话简介」→ 总部经纬度与目标行业重新解析；改竞品体量原文 → SKU 与价格带重新统计；空值仍是空，<b>不写成 0</b>。每格标「人工覆盖」并显示源表原值、改动人、时间，可逐格「恢复原表」或整段「全部恢复原表」，改动同样进「跟进历史」留痕。</li>
         <li>本文件为<b>单文件离线看板</b>，无任何外部依赖，双击即可打开。</li>
       </ul></div></div>`;
   }
@@ -4138,6 +4379,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     rows: () => OVR_ROWS,
     of: ovrOf,
     set: ovrSet,
+    setField: fieldSet,
+    revertAll: fieldRevertAll,
     key: ovrKey,
     can: canOvr,
     count: () => OVR_ROWS.filter((x) => x && (x.p || x.scale_text)).length,
@@ -7183,17 +7426,41 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     }
   }
 
+  /* customer_overrides 的 fields 列是 2026-11-18 才加的（原表字段覆盖）。
+     旧库还没跑 ALTER 时，带 fields 的写入会 400/PGRST204 —— 更糟的是它会把「改优先级」一起写坏。
+     所以：无字段覆盖时根本不上送这一列；真上送了却报「没有该列」，翻成一句人话告诉用户去跑 SQL。 */
+  let fieldsColMissing = false;
+  const cleanOvr = (row) => {
+    const b = Object.assign({}, row);
+    if (!b.fields || (typeof b.fields === 'object' && !Object.keys(b.fields).length)) delete b.fields;
+    return b;
+  };
+  const isNoFieldsCol = (e) => {
+    const sig = String((e && (e.code || '') ) + ' ' + (e && (e.message || '')));
+    return /PGRST204|Could not find the 'fields' column|column "?fields"? does not exist|fields.? column/i.test(sig);
+  };
+
   async function saveOvr(row) {
     if (!ready || !cloud) throw new Error('云端还没连上，稍等两秒再保存');
-    const r = await cloud.database.from(OVR_TABLE).upsert(row, { onConflict: 'id' });
-    if (r.error) throw r.error;
+    const body = cleanOvr(row);
+    if (fieldsColMissing && body.fields) {
+      throw new Error('云端 customer_overrides 还没有 fields 列，先在 Supabase SQL Editor 跑一次 outputs/supabase_schema.sql');
+    }
+    const r = await cloud.database.from(OVR_TABLE).upsert(body, { onConflict: 'id' });
+    if (r.error) {
+      if (isNoFieldsCol(r.error)) {
+        fieldsColMissing = true;
+        throw new Error('云端 customer_overrides 还没有 fields 列（原表字段覆盖用），先在 Supabase SQL Editor 跑一次 outputs/supabase_schema.sql；其余字段不受影响');
+      }
+      throw r.error;
+    }
     return true;
   }
 
   async function saveOvrBulk(rows) {
     if (!ready || !cloud) throw new Error('云端还没连上，稍等两秒再保存');
     for (let i = 0; i < rows.length; i += 80) {
-      const r = await cloud.database.from(OVR_TABLE).upsert(rows.slice(i, i + 80), { onConflict: 'id' });
+      const r = await cloud.database.from(OVR_TABLE).upsert(rows.slice(i, i + 80).map(cleanOvr), { onConflict: 'id' });
       if (r.error) throw r.error;
     }
     return rows.length;

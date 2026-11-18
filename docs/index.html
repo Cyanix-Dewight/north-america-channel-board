@@ -593,7 +593,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-16 14:31<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 10:30<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -3534,7 +3534,67 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
   /* ---------- 路由 / 初始化 ---------- */
   const VIEWS = ['overview', 'board', 'scale'];
+  /* ---------- 地区 / 国家下拉：每次渲染按当前数据重建 ----------
+     ① 新客户（手工录入、批量导入）的国家一出现就进下拉，不用刷新页面；
+     ② 地区与国家联动：选了「北美」，国家只剩当前数据里真出现过的美国/加拿大/墨西哥；
+        已选的国家若不在新选的地区内，自动回到「全部」（避免出现地区+国家互斥、筛出空表）；
+     ③ 括号里的数量随当前类型（零售商 / 代理）与地区范围实时变化。 */
+  function paintGeoFilters() {
+    const f = state.filters;
+    const rows = LIST() || [];
+    const rg = el('f-region'), cs = el('f-country');
+    if (!rg || !cs) return;
+    const byRegion = {}, byCountry = {};
+    rows.forEach((c) => {
+      const rk = CORE.regionOf(c);
+      const ck = String(c.country || '').toUpperCase();
+      byRegion[rk] = (byRegion[rk] || 0) + 1;
+      if (!byCountry[ck]) byCountry[ck] = {};
+      byCountry[ck][rk] = (byCountry[ck][rk] || 0) + 1;
+    });
+    const curC = String(f.country || '').toUpperCase();
+    if (f.region !== 'ALL' && f.country !== 'ALL') {
+      const m = byCountry[curC];
+      if (!m || !m[f.region]) f.country = 'ALL';
+    }
+    const rord = CORE.REGIONS.filter((k) => byRegion[k]).concat(byRegion['其他'] ? ['其他'] : []);
+    rg.innerHTML = '<option value="ALL">全部（' + rows.length + '）</option>' + rord.map((k) =>
+      `<option value="${esc(k)}">${esc(CORE.REGION_CN[k] || k)}（${byRegion[k]}）</option>`).join('');
+    rg.value = f.region;
+    const clist = [];
+    Object.keys(byCountry).forEach((ck) => {
+      let n = 0;
+      Object.keys(byCountry[ck]).forEach((rk) => {
+        if (f.region === 'ALL' || rk === f.region) n += byCountry[ck][rk];
+      });
+      if (n) clist.push([ck, n]);
+    });
+    clist.sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0])));
+    cs.innerHTML = '<option value="ALL">全部</option>' + clist.map((x) => {
+      const nm = countryLabel({ country: x[0] });
+      return `<option value="${esc(x[0])}">${esc(x[0] ? nm + ' ' + x[0] : nm)}（${x[1]}）</option>`;
+    }).join('');
+    cs.value = f.country;
+    /* 行业下拉同样按当前数据重建（和地区/国家是同一类陈旧问题：
+       新录入客户手工指定的行业要立刻能筛到） */
+    const isel = el('f-ind');
+    if (isel) {
+      const icnt = {};
+      rows.forEach((c) => { const k = c.ind || '未标注'; icnt[k] = (icnt[k] || 0) + 1; });
+      const iord = Object.keys(icnt).sort((a, b) => {
+        const ia = IND_KEYS.indexOf(a), ib = IND_KEYS.indexOf(b);
+        return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+      });
+      isel.innerHTML = '<option value="ALL">全部</option>' + iord.map((k) =>
+        `<option value="${esc(k)}">${esc(k)}（${icnt[k]}）</option>`).join('');
+      isel.value = f.ind;
+    }
+  }
+
   function render() {
+    // 下拉先重建：新录入客户的国家、各地区家数要立刻反映出来（放在 box 判断前，
+    // 免得某个视图容器缺失时连筛选栏都不更新）
+    paintGeoFilters();
     const list = APP.filtered();
     const box = el('view-' + state.view);
     if (!box) return;
@@ -3646,44 +3706,15 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       n.value = f[key];
       n.addEventListener('change', () => { f[key] = n.value; render(); });
     };
-    // 国家下拉：新增名单里有 PR（波多黎各）和空值，写死「US | CA」会筛不到人 → 按实际数据生成
-    const cs = el('f-country');
-    if (cs) {
-      const seen = {};
-      (APP.retailers || []).concat(APP.agents || []).forEach((c) => {
-        const k = (c.country || '').toUpperCase(); seen[k] = (seen[k] || 0) + 1;
-      });
-      const ord = Object.keys(seen).sort((a, b) => seen[b] - seen[a]);
-      cs.innerHTML = '<option value="ALL">全部</option>' + ord.map((k) => {
-        const nm = countryLabel({ country: k });
-        return `<option value="${esc(k)}">${esc(k ? nm + ' ' + k : nm)}</option>`;
-      }).join('');
-    }
-    // 行业下拉：只列当前类型里真实出现的行业，按数量降序
-    const isel = el('f-ind');
-    if (isel) {
-      const cnt = {};
-      LIST().forEach((c) => { const k = c.ind || '未标注'; cnt[k] = (cnt[k] || 0) + 1; });
-      const ord = Object.keys(cnt).sort((a, b) => IND_KEYS.indexOf(a) - IND_KEYS.indexOf(b));
-      isel.innerHTML = '<option value="ALL">全部</option>' + ord.map((k) =>
-        `<option value="${esc(k)}">${esc(k)}（${cnt[k]}）</option>`).join('');
-    }
+    // 国家 / 地区 / 行业三个下拉的选项由 paintGeoFilters() 每次渲染重建（含联动与数量），
+    // 这里只绑一次事件；bindSel 的闭包捕获 state.filters，重置时必须就地清空、不能换新对象。
     bindSel('f-country', 'country');
     bindSel('f-ind', 'ind');
     bindSel('f-p', 'p');
     bindSel('f-coop', 'coop');
     bindSel('f-contact', 'contact');
     bindSel('f-level', 'level');
-    // 地区下拉：只列当前数据里真实出现的大区（全球看板不再只有北美）
-    const rg = el('f-region');
-    if (rg) {
-      const cnt = {};
-      LIST().forEach((c) => { const k = CORE.regionOf(c); cnt[k] = (cnt[k] || 0) + 1; });
-      const ord = CORE.REGIONS.concat(cnt['其他'] ? ['其他'] : []).filter((k) => cnt[k]);
-      rg.innerHTML = '<option value="ALL">全部</option>' + ord.map((k) =>
-        `<option value="${esc(k)}">${esc(CORE.REGION_CN[k] || k)}（${cnt[k]}）</option>`).join('');
-      bindSel('f-region', 'region');
-    }
+    bindSel('f-region', 'region');
     const q = el('f-q');
     if (q) {
       let t;

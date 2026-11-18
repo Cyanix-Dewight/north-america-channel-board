@@ -608,6 +608,11 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 .ovrbar .btn{margin-left:auto}
 @media (max-width:760px){.ovrsect .dfgrid{grid-template-columns:1fr}}
 
+/* 云端读取失败的顶部警告（每个页面都显示，不再静默） */
+.notice.bad{background:#FEF2F2;border-color:#F6C6C6;color:#8F1D1D}
+.notice.bad a{color:#B42318;text-decoration:underline}
+.cloudupt{margin:0 0 12px;line-height:1.6}
+
 </style>
 </head>
 <body>
@@ -617,7 +622,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 11:54<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 13:52<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -3817,6 +3822,24 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     }
   }
 
+  /* 云端读取失败要在**每个页面顶部**显性提示。
+     以前这类失败是静默的：打开一个连着坏库的旧网址，看到的客户少了 200 家，
+     却没有任何提示，很容易被当成「数据丢了 / 同步没做」排查半天。 */
+  function cloudWarn() {
+    const S = W.SYNC;
+    if (!S || !S.enabled || !S.issue) return '';
+    const iss = S.issue() || '';
+    if (!iss) return '';
+    const site = S.site ? S.site() : '';
+    return `<div class="notice bad cloudupt">
+      <b>云端数据没读到，现在显示的是看板内置名单</b>：${esc(iss)}。<br>
+      同事上传的新客户、跟进记录、历史留痕都要从云端取，取不到时不会显示——这不是数据丢了。
+      常见原因是<b>打开了旧网址或旧缓存</b>：请用最新链接打开
+      ${site ? `（<a href="${esc(site)}/" target="_blank" rel="noopener noreferrer">${esc(site)}</a>）` : ''}，
+      手机端建议强制刷新一次（长按刷新 / 清除该站缓存）。
+    </div>`;
+  }
+
   function render() {
     // 下拉先重建：新录入客户的国家、各地区家数要立刻反映出来（放在 box 判断前，
     // 免得某个视图容器缺失时连筛选栏都不更新）
@@ -3838,7 +3861,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         html = ev ? ev(list) : '<div class="empty">视图未实现</div>';
       }
     }
-    box.innerHTML = html;
+    box.innerHTML = cloudWarn() + html;
     $$('.view').forEach((s) => s.classList.toggle('active', s.id === 'view-' + state.view));
     bindView(box);
     $$('.tab').forEach((b) => b.classList.toggle('active', b.dataset.view === state.view));
@@ -6815,6 +6838,8 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
       saveOvrBulk() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
       logHist() { return Promise.resolve(); },
       hist() { return Promise.resolve({ data: [], missing: true }); },
+      issue: () => '',
+      ovrMissing: () => false,
       enabled: false,
     };
     return;
@@ -6843,6 +6868,11 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
   let lastAt = null;
   let timer = null;
   let pulling = false;
+  /* 拉取失败的原因单独记着：页面顶部要显性提示。
+     以前失败是静默的——用户只看到「客户怎么这么少」，以为是数据问题，
+     实际是打开的网址连着一个读不到的库。 */
+  let pullErr = '';
+  let extraErr = '';
   const subs = [];
   const queue = [];
 
@@ -6968,39 +6998,51 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
       const { data, error } = await cloud.database.from(TABLE).select('*');
       if (error) throw error;
       lastAt = new Date();
+      pullErr = '';
       setStatus('online');
       if (W.PIPE && W.PIPE.applyRemote) W.PIPE.applyRemote(data || []);
       flush();
       pullExtra();
       pullOvr();
     } catch (e) {
-      setStatus('offline', (e && (e.message || e.code)) || '拉取失败');
+      pullErr = (e && (e.message || e.code)) || '拉取失败';
+      setStatus('offline', pullErr);
     } finally {
       pulling = false;
     }
   }
 
   /* 手工录入的客户：跟跟进记录一个轮询节奏，拉到就交给 entry.js 重建客户列表。
-     这张表读失败不影响跟进记录的主流程（老部署里可能还没建这张表）。 */
+     这张表读失败不影响跟进记录的主流程（老部署里可能还没建这张表），
+     但要把原因记下来——不然「同事上传的新客户不见了」会被当成数据问题排查半天。 */
   async function pullExtra() {
     try {
       const { data, error } = await cloud.database.from(EXTRA_TABLE).select('*');
-      if (error) return;
+      if (error) { extraErr = 'customers_extra：' + (error.message || error.code || '读取失败'); return; }
+      extraErr = '';
       if (W.ENTRY_APPLY) W.ENTRY_APPLY(data || []);
     } catch (e) {
-      /* 忽略：没有这张表 / 网络抖动，下次轮询再试 */
+      extraErr = 'customers_extra：' + ((e && (e.message || e.code)) || '网络');
     }
   }
 
-  /* 人工覆盖（优先级 / 综合体量）：跟跟进记录同节奏拉取，读失败静默
-     （老部署或还没建这张表时，看板照常用源表值） */
+  /* 人工覆盖（优先级 / 综合体量）：跟跟进记录同节奏拉取。
+     这张表还没建时不算故障（看板照常用源表值），所以只记状态不弹警告。 */
+  let ovrErr = '';
+  let ovrMissing = false;
   async function pullOvr() {
     try {
       const { data, error } = await cloud.database.from(OVR_TABLE).select('*');
-      if (error) return;
+      if (error) {
+        const sig = String((error.code || '') + ' ' + (error.message || ''));
+        if (/PGRST205|42P01|Could not find/i.test(sig)) { ovrMissing = true; ovrErr = ''; }
+        else ovrErr = 'customer_overrides：' + (error.message || error.code || '读取失败');
+        return;
+      }
+      ovrErr = ''; ovrMissing = false;
       if (W.OVR_APPLY) W.OVR_APPLY(data || []);
     } catch (e) {
-      /* 忽略：没有这张表 / 网络抖动，下次轮询再试 */
+      ovrErr = 'customer_overrides：' + ((e && (e.message || e.code)) || '网络');
     }
   }
 
@@ -7221,6 +7263,11 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     saveOvrBulk,
     logHist,
     hist: histOf,
+    issue: () => [
+      pullErr ? '跟进记录读不到（' + pullErr + '）' : '',
+      extraErr ? '同事上传的新客户读不到（' + extraErr + '）' : '',
+    ].filter(Boolean).join('；'),
+    ovrMissing: () => ovrMissing,
     enabled: true,
   };
 

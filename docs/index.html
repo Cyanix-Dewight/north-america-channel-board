@@ -593,7 +593,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 10:30<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 11:03<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -2014,7 +2014,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       c.lead = true;
       c.seg = '手工录入';
       c.segWhy = '在「客户录入」页手工新增，简介未过自动分类器';
-      c.ownerDefault = x.owner || 'Evelyn';
+      c.ownerDefault = x.owner || '';
       if (x.ind) { c.ind = x.ind; c.indWhy = '录入时手工指定'; c.indKw = ''; }
       // 录入人：优先 created_by（WorkBuddy 旧列），Supabase 表没有这列时用 updated_by 兜底
       c.entryBy = x.created_by || x.updated_by || '';
@@ -5756,7 +5756,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           <div class="fld"><label>目标行业</label>
             <select name="ind"${on ? '' : ' disabled'}><option value="">未标注</option>${indKeys.map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select></div>
           <div class="fld"><label>负责人</label>
-            <input name="owner" value="${esc(who() || 'Evelyn')}" placeholder="谁跟这家"${on ? '' : ' disabled'}></div>
+            <input name="owner" value="" placeholder="谁跟这家（不填就留空，之后在跟进表里指派）"${on ? '' : ' disabled'}></div>
           <div class="fld wide"><label>官网</label>
             <input name="site" placeholder="https://…"${on ? '' : ' disabled'}></div>
 
@@ -6152,7 +6152,10 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       region: r.region || '',
       cats: r.cats || '',
       ind: r.ind || '',
-      owner: r.owner || who() || 'Evelyn',
+      /* 负责人不猜：表里没写就留空（跟进表显示「待指派」）。
+         以前这里兜底成 who() || 'Evelyn'，把「谁填的表」当成了「谁跟这家」，
+         147 行因此被误标成 Evelyn——那种默认只适用于 2026-11 那一次的新增名单。 */
+      owner: r.owner || '',
       note: r.note || '',
       scale_text: r.scale_text || '',
       comp_raw: r.comp_raw || '',
@@ -6393,7 +6396,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     Promise.resolve(W.SYNC.saveExtra(row)).then(() => {
       busy = false;
       f.reset();
-      if (f.elements.owner) f.elements.owner.value = who() || 'Evelyn';
+      // 负责人不再回填成录入人：f.reset() 后保持空白，不填就是「待指派」
       ROWS = ROWS.filter((x) => x.id !== row.id).concat([row]);
       lastKey = '';
       rebuild();

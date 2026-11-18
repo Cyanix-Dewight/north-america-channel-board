@@ -584,6 +584,30 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 .histlist .hitem .hc{font-size:12px;color:var(--ink);line-height:1.45;word-break:break-word}
 .histlist .hitem .hc b{font-weight:600}
 
+/* ---- 看板内直接改优先级 / 综合体量（customer_overrides） ---- */
+.pinline{height:20px;padding:0 4px;border:1px solid var(--line);border-radius:5px;background:#fff;
+  font-size:11px;font-weight:600;color:var(--ink-2);cursor:pointer;font-variant-numeric:tabular-nums}
+.pinline.P1{background:var(--danger-soft);border-color:#F6D3D8;color:var(--danger)}
+.pinline.P2{background:var(--warn-soft);border-color:#FCE5C6;color:var(--warn)}
+.pinline.P3{background:#F2F4F7;color:var(--ink-2)}
+.pinline:hover{border-color:#C7D2E0}
+.pinline:focus{outline:2px solid rgba(37,99,235,.25);outline-offset:1px}
+.pinline:disabled{opacity:.55;cursor:not-allowed}
+.scalein{width:112px;height:20px;padding:0 5px;border:1px solid transparent;border-radius:5px;
+  background:transparent;font-size:11.5px;color:var(--ink)}
+.dt tbody tr:hover .scalein{border-color:var(--line);background:#fff}
+.scalein:hover{border-color:#C7D2E0;background:#fff}
+.scalein:focus{outline:none;border-color:var(--brand);background:#fff;box-shadow:0 0 0 2px rgba(37,99,235,.14)}
+.scleh{margin-top:1px;font-size:10px;line-height:1.35}
+.ovrtag{display:inline-block;margin-left:3px;padding:0 4px;border-radius:4px;background:#EDE9FE;
+  color:#6D28D9;font-size:9.5px;line-height:14px;vertical-align:1px;cursor:help}
+.ovrsect .dfgrid{grid-template-columns:1fr 1fr}
+.ovrsrc{margin-top:4px;font-size:10.5px;color:var(--ink-3);line-height:1.45}
+.ovrsrc b{color:var(--ink-2);font-weight:600}
+.ovrbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ovrbar .btn{margin-left:auto}
+@media (max-width:760px){.ovrsect .dfgrid{grid-template-columns:1fr}}
+
 </style>
 </head>
 <body>
@@ -593,7 +617,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 11:03<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 11:54<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -1964,6 +1988,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
        · 缺体量或竞品就按「名单阶段」处理，不跑三因子；
        · 细分单独标「手工录入」，别混进自动分类器的三档里去。 */
   const EXTRA = () => (global.__EXTRA__ || []);
+  /* 人工覆盖（优先级 / 综合体量），由 sync.js 拉云端 customer_overrides 后写入 */
+  const OVR = () => (global.__OVR__ || []);
 
   function extraRow(key, x) {
     const H = (key === 'retailer' ? S1 : S2).headers;
@@ -2022,6 +2048,51 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     }));
   }
 
+  /* 人工覆盖（看板上直接改的优先级 / 综合体量）。
+     键与跟进记录同一套：`类型|去空白客户名`。
+     - 空字符串 = 撤销这一项覆盖，回到源表值（不是「改成空」）；
+     - 体量按原文重新折算分档（写「15 亿欧元」→ 16.2 亿美元 · A 档）；
+       写的原文里没有金额，就如实变成「未量化」，不编数字；
+     - 源表原值保留在 pOvr.from / scaleOvr.from，抽屉里可对照，撤销即恢复。 */
+  function applyOverrides() {
+    const xs = OVR();
+    if (!xs.length) return;
+    const m = {};
+    xs.forEach((x) => { if (x && x.id) m[x.id] = x; });
+    [APP.retailers, APP.agents].forEach((list) => list.forEach((c) => {
+      const x = m[c.type + '|' + String(c.name).replace(/\s+/g, '')];
+      if (!x) return;
+      const pv = String(x.p || '').toUpperCase().match(/P[123]/);
+      if (pv) {
+        c.pOvr = { from: c.p || '', fromSource: c.pSource || '', by: x.updated_by || '', at: String(x.updated_at || '').slice(0, 16).replace('T', ' ') };
+        c.p = pv[0];
+        c.pSource = '人工覆盖';
+        c.pConflict = false;   // 覆盖是人的决定，不再和模型判定互相打架
+      } else if (x.p === '' && c.pOvr) {
+        c.p = c.pOvr.from || c.pModel || null;
+        c.pSource = c.pOvr.fromSource || (c.p ? '原表标注' : '模型判定');
+        c.pOvr = null;
+      }
+      const st = txt(x.scale_text);
+      if (st) {
+        const old = c.mny ? moneyRange(c.mny.low, c.mny.high) : '';
+        c.scaleOvr = { from: c.scaleText || '', fromRange: old, by: x.updated_by || '', at: String(x.updated_at || '').slice(0, 16).replace('T', ' ') };
+        c.scaleText = st;
+        const mn = parseMoney(st);
+        c.mny = mn;
+        c.scaleMid = mn ? (mn.low + mn.high) / 2 : null;
+        c.tier = mn ? scaleTier(c.scaleMid) : null;
+      } else if (x.scale_text === '' && c.scaleOvr) {
+        c.scaleText = c.scaleOvr.from;
+        const mn = parseMoney(c.scaleText);
+        c.mny = mn;
+        c.scaleMid = mn ? (mn.low + mn.high) / 2 : null;
+        c.tier = mn ? scaleTier(c.scaleMid) : null;
+        c.scaleOvr = null;
+      }
+    }));
+  }
+
   function build() {
     const exR = EXTRA().filter((x) => x.ctype === 'retailer' && x.name).map((x) => extraRow('retailer', x));
     const exA = EXTRA().filter((x) => x.ctype === 'agent' && x.name).map((x) => extraRow('agent', x));
@@ -2030,6 +2101,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     APP.retailers = rowsR.map((r, i) => markIndustry(markLead(buildRetailer(r, i), 'retailer', i), 'retailer')).filter((c) => c.name);
     APP.agents = rowsA.map((r, i) => markIndustry(markLead(buildAgent(r, i), 'agent', i), 'agent')).filter((c) => c.name);
     markEntries();
+    applyOverrides();
     APP.retailers.forEach((c) => { if (c.batch !== 'new') c.action = retailerAction(c); });
     APP.agents.forEach((c) => {
       if (c.batch === 'new') return;
@@ -2948,8 +3020,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <td class="muted num">${i + 1}</td>
         <td><div class="tname">${esc(c.name)}${leadChip(c)}${indChip(c, true)}</div><div class="mini">${esc((c.intro || '').slice(0, 34))}${(c.intro || '').length > 34 ? '…' : ''}</div></td>
         <td>${countryLabel(c)}</td>
-        <td>${pChip(c, true)}</td>
-        <td>${scaleCell(c)} ${tierDot(c.tier)}</td>
+        <td>${pCell(c)}</td>
+        <td>${scaleCellEd(c)}</td>
         <td>${mid}</td>
         <td class="num">${c.sku.totalSku || '<span class="mini muted">—</span>'}</td>
         <td>${c.sku.obs && c.sku.obs.sku ? `<span class="chip blue">${c.sku.obs.sku}</span>` : '<span class="mini muted">未在架</span>'}</td>
@@ -2986,6 +3058,113 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         </table></div>
       </div>
     </div>`;
+  }
+
+  /* ============================================================
+     人工覆盖：优先级 / 综合体量（看板内直接改，实时同步）
+     ------------------------------------------------------------
+     为什么不改 Excel：源表每次 update.py 重跑都会覆盖 __DATA__，改了也会被冲掉。
+     覆盖值单独存云端 customer_overrides，model.js 在构建结果上再叠加一次，
+     所以既多人共享、又不怕重跑；清空某一格 = 撤销覆盖、回到源表原值。
+     体量填原文（「15 亿欧元」「44.6 亿丹麦克朗」），按同一套汇率自动折美元并重新分档；
+     原文里没有金额就如实变成「未量化」，不编数字。
+     ============================================================ */
+  const ovrKey = (c) => c.type + '|' + String(c.name).replace(/\s+/g, '');
+  let OVR_ROWS = [];
+  let ovrLastKey = '';
+  let drawerId = '';   // 当前抽屉对应的客户 id：改完一格要刷新抽屉里的折算提示
+  const ovrOf = (c) => OVR_ROWS.filter((x) => x && x.id === ovrKey(c))[0] || null;
+  const canOvr = () => !!(W.SYNC && W.SYNC.enabled && W.SYNC.saveOvr);
+
+  function ovrRebuild() {
+    // 记住当前视图表格的滚动位置：改完一格整表会重排，跳回顶部很难受
+    const box = el('view-' + state.view);
+    const wrap = box && box.querySelector('.tablewrap');
+    const top = wrap ? wrap.scrollTop : 0;
+    const focus = document.activeElement;
+    const fo = focus && focus.dataset ? focus.dataset.oid : '';
+    const ff = focus && focus.dataset ? focus.dataset.of : '';
+    W.__OVR__ = OVR_ROWS;
+    APP.build();
+    render();
+    const box2 = el('view-' + state.view);
+    const wrap2 = box2 && box2.querySelector('.tablewrap');
+    if (wrap2) wrap2.scrollTop = top;
+    if (fo && ff) {
+      const again = box2 && box2.querySelector('[data-oid="' + fo + '"][data-of="' + ff + '"]');
+      if (again) again.focus();
+    }
+  }
+
+  function ovrApply(rows) {
+    const xs = Array.isArray(rows) ? rows : [];
+    const key = JSON.stringify(xs.map((x) => [x.id, x.p || '', x.scale_text || '', x.updated_at || '']).sort());
+    if (key === ovrLastKey) return;   // 内容没变就别重建，免得打断正在填的格子
+    ovrLastKey = key;
+    OVR_ROWS = xs;
+    ovrRebuild();
+  }
+
+  /* 保存一格：value === null/'' 表示撤销该项覆盖 */
+  function ovrSet(c, field, value) {
+    if (!c) return Promise.resolve(false);
+    if (!canOvr()) {
+      if (W.__toast) W.__toast('本机模式不能保存，请用线上链接打开');
+      return Promise.resolve(false);
+    }
+    const v = String(value == null ? '' : value).trim();
+    const cur = field === 'p' ? (c.p || '') : (c.scaleText || '');
+    const src = field === 'p' ? ((c.pOvr ? c.pOvr.from : c.p) || '') : ((c.scaleOvr ? c.scaleOvr.from : c.scaleText) || '');
+    if (v === cur) return Promise.resolve(false);       // 没变化不写、也不留痕
+    const key = ovrKey(c);
+    const prev = ovrOf(c) || {};
+    const row = {
+      id: key, ctype: c.type, customer: c.name,
+      p: prev.p || '', scale_text: prev.scale_text || '',
+      updated_by: (W.SYNC.who ? W.SYNC.who() : '') || '',
+      updated_at: new Date().toISOString(),
+    };
+    row[field] = v;
+    // 两项都空了 = 完全撤销，写空行即可（model 会回到源表值）
+    const hist = {
+      record_id: key, ctype: c.type, customer: c.name,
+      field, old_val: cur, new_val: v, by: row.updated_by || '—',
+    };
+    return Promise.resolve(W.SYNC.saveOvr(row)).then(() => {
+      OVR_ROWS = OVR_ROWS.filter((x) => x.id !== key).concat([row]);
+      ovrLastKey = '';
+      ovrRebuild();
+      if (W.SYNC.logHist) W.SYNC.logHist([hist]);
+      // 抽屉开着同一家：重画一次，让折算结果 / 源表对照 / 撤销按钮同步更新
+      if (drawerId === c.id && el('drawer') && el('drawer').classList.contains('on')) openDrawer(c.id);
+      return true;
+    }).catch((err) => {
+      if (W.__toast) W.__toast('保存失败：' + ((err && (err.message || err.code)) || '网络或权限'));
+      return false;
+    });
+  }
+
+  /* 表格里的优先级格：可编辑时是一个下拉，本机模式仍是只读 chip */
+  function pCell(c) {
+    if (!canOvr()) return pChip(c, true);
+    const v = c.p || '';
+    return `<select class="pinline${v ? ' ' + v : ''}" data-oid="${esc(c.id)}" data-of="p"
+        title="改优先级：立即保存并同步给所有人${c.pOvr ? '（当前为人工覆盖，源表 ' + c.pOvr.from + '）' : ''}">
+        <option value="">未定</option>${['P1', 'P2', 'P3'].map((p) =>
+          `<option value="${p}"${p === v ? ' selected' : ''}>${p}</option>`).join('')}</select>`
+      + (c.pOvr ? '<span class="ovrtag" title="人工覆盖：源表是 ' + esc(c.pOvr.from || '未标注') + ' · ' + esc(c.pOvr.by || '') + '">改</span>' : '');
+  }
+
+  /* 表格里的体量格：输入原文，下面一行实时显示折算结果与分档 */
+  function scaleCellEd(c) {
+    if (!canOvr()) return scaleCell(c) + ' ' + tierDot(c.tier);
+    const hint = c.mny
+      ? `${moneyRangeShort(c.mny.low, c.mny.high)} · ${c.tier ? c.tier.key + ' 档' : '未分档'}`
+      : '未量化（原文里没有金额）';
+    return `<input class="pin scalein" data-oid="${esc(c.id)}" data-of="scale_text"
+        value="${esc(c.scaleText || '')}" placeholder="如 250~260 亿美元"
+        title="填原文即可，按同一套汇率自动折美元并重新分档；清空 = 撤销覆盖、回到源表「${esc((c.scaleOvr ? c.scaleOvr.from : c.scaleText) || '空')}」">
+      <div class="mini muted scleh">${esc(hint)}${c.scaleOvr ? ' · <span class="ovrtag">改</span>' : ''}</div>`;
   }
 
   /* ---------- 体量分析 ---------- */
@@ -3162,8 +3341,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           nameCell(c),
           `<td>${countryLabel(c)}</td>`,
           `<td>${indChip(c) || '<span class="mini muted">—</span>'}</td>`,
-          `<td>${pChip(c, true)}</td>`,
-          `<td>${scaleCell(c)}</td>`,
+          `<td>${pCell(c)}</td>`,
+          `<td>${scaleCellEd(c)}</td>`,
           `<td class="num">${c.store.n == null ? '<span class="mini muted">—</span>' : (c.store.approx ? '≈' : '') + c.store.n.toLocaleString()}</td>`,
           `<td class="num">${c.sku.totalSku || '<span class="mini muted">—</span>'}</td>`,
           `<td>${c.sku.obs && c.sku.obs.sku ? `<span class="chip blue">${c.sku.obs.sku} SKU</span>` : '<span class="mini muted">未在架</span>'}</td>`,
@@ -3176,8 +3355,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           nameCell(c),
           `<td>${countryLabel(c)}</td>`,
           `<td>${indChip(c) || '<span class="mini muted">—</span>'}</td>`,
-          `<td>${pChip(c, true)}</td>`,
-          `<td>${scaleCell(c)}</td>`,
+          `<td>${pCell(c)}</td>`,
+          `<td>${scaleCellEd(c)}</td>`,
           `<td><span class="mini">${esc(c.judge ? c.judge.chLabel : '—')}</span></td>`,
           `<td><span class="mini">${esc((c.linesRaw || '').replace(/\n/g, ' · ').slice(0, 30) || '—')}</span></td>`,
           `<td>${coopChip(c)}</td>`,
@@ -3201,6 +3380,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   function openDrawer(id) {
     const c = LIST().find((x) => x.id === id) || APP.customers.find((x) => x.id === id);
     if (!c) return;
+    drawerId = id;
     const box = el('drawer');
     const site = siteUrl(c.url), host = siteHost(c.url);
     const sm = c.sku;
@@ -3264,10 +3444,43 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
             ? '<span class="dot"></span>离开输入框即自动保存，并同步给所有打开链接的人'
             : '<span class="dot"></span>离开输入框即自动保存到本机浏览器')
           : '当前模块未加载，暂不能编辑'}</div>
-      </div>
+      </div>`;
+    const histSect = `
       <div class="sect" id="df-hist-sect">
         <h4>跟进历史 <span class="mini muted">（每次修改自动留痕，含批量导入）</span></h4>
         <div class="histlist" id="df-hist"><span class="mini muted">读取中…</span></div>
+      </div>`;
+
+    /* ---------- 优先级 / 综合体量（看板内直接改） ----------
+       改动写云端 customer_overrides，所有人 6 秒内看到；源表原值保留在下面对照，
+       「撤销覆盖」即回到源表值。体量填原文，按同一套汇率自动折算并重新分档。 */
+    const pSrcRaw = (c.raw && c.raw['优先级']) ? String(c.raw['优先级']).toUpperCase().match(/P[123]/) : null;
+    const scRaw = (c.raw && c.raw['综合体量']) ? String(c.raw['综合体量']) : '';
+    const ovrOn = canOvr();
+    const pv = c.p || '';
+    const ovrSect = `
+      <div class="sect pipeedit ovrsect">
+        <h4>优先级与综合体量 <span class="mini muted">（改动即时同步；清空 = 回到源表值）</span></h4>
+        <div class="dfgrid">
+          <div class="dfld">
+            <span class="lb"><span>优先级</span><span class="tag">${c.pOvr ? '人工覆盖' : esc(c.pSource || '')}</span></span>
+            <select data-oid="${esc(c.id)}" data-of="p"${ovrOn ? '' : ' disabled'}>
+              <option value="">未定</option>${['P1', 'P2', 'P3'].map((p) =>
+                `<option value="${p}"${p === pv ? ' selected' : ''}>${p}</option>`).join('')}
+            </select>
+            <div class="ovrsrc">源表${pSrcRaw ? '标注 <b>' + pSrcRaw[0] + '</b>' : '未填'}${c.pModel ? ' · 模型建议 <b>' + c.pModel + '</b>' : ''}${c.pOvr ? ' · 覆盖前 <b>' + esc(c.pOvr.from || '未定') + '</b>（' + esc(c.pOvr.by || '') + '）' : ''}</div>
+          </div>
+          <div class="dfld">
+            <span class="lb"><span>综合体量（填原文）</span><span class="tag">${c.scaleOvr ? '人工覆盖' : (c.mny ? '已折算' : '未量化')}</span></span>
+            <input data-oid="${esc(c.id)}" data-of="scale_text" value="${esc(c.scaleText || '')}"
+              placeholder="如 250~260 亿美元 / 44.6 亿丹麦克朗"${ovrOn ? '' : ' disabled'}>
+            <div class="ovrsrc">${c.mny ? '折算 <b>' + esc(moneyRange(c.mny.low, c.mny.high)) + '</b> · ' + esc(c.tier ? c.tier.key + ' 档' : '未分档') + '（' + esc(c.mny.via || '') + '）' : '原文里没有金额 → 未量化（不编数字）'}${c.scaleOvr ? '<br>源表原文「' + esc(c.scaleOvr.from || '空') + '」' : ''}</div>
+          </div>
+        </div>
+        <div class="dfmsg ovrbar">${ovrOn
+          ? '<span class="dot"></span>改完自动保存并同步 · 每次改动都会进「跟进历史」留痕'
+            + ((c.pOvr || c.scaleOvr) ? ' <button class="btn ghost sm" data-act="ovr-clear">撤销覆盖，回到源表值</button>' : '')
+          : '本机模式（双击打开文件）不能保存，请用线上链接打开后再改'}</div>
       </div>`;
 
     box.innerHTML = `
@@ -3283,6 +3496,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       </div>
       <div class="drawer-b">
         ${pipeSect}
+        ${ovrSect}
+        ${histSect}
         ${c.batch === 'new' && c.seg ? `<div class="sect"><h4>分类依据（按「一句话简介」判定）</h4>
           <div class="note" style="margin-bottom:6px"><b>${esc(c.seg)}</b>：${esc(c.segWhy || '')}</div>
           <div class="mini muted">${c.segKw === '人工复核' ? '这一家由人工逐条复核后定档（简介里两类信号并存或有歧义），不是规则自动判的。' : (c.segKw ? '简介里最先出现的身份词：<b>' + esc(c.segKw) + '</b>。' : '简介里没有识别到身份词，标为待核实。')}</div>
@@ -3336,6 +3551,15 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   }
   function bindDrawerClicks(box, c) {
     $$('[data-act="close-drawer"]', box).forEach((b) => b.addEventListener('click', closeDrawer));
+    $$('[data-act="ovr-clear"]', box).forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!c) return;
+      if (!window.confirm('撤销对「' + c.name + '」的优先级 / 综合体量覆盖，回到源表值？')) return;
+      const done = [];
+      if (c.pOvr) done.push(ovrSet(c, 'p', ''));
+      if (c.scaleOvr) done.push(ovrSet(c, 'scale_text', ''));
+      Promise.all(done).then(() => { if (W.__toast) W.__toast('已撤销覆盖，回到源表值'); });
+    }));
     bindDrawerEdits(box, c);
     loadHist(box, c);
   }
@@ -3347,6 +3571,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     stage: '当前阶段', done: '已完成动作', next: '下一步行动', owner: '负责人',
     planDate: '计划跟进', lastDate: '最近跟进', difficulty: '开发难点',
     direction: '方向判断', verify: '数据核实', note: '备注',
+    p: '优先级', scale_text: '综合体量',
   };
   function loadHist(box, c) {
     const elH = box.querySelector('#df-hist');
@@ -3528,6 +3753,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <li>表头带 ⇅ 的列可排序；缺失值永远排在最后。</li>
         <li>每页右上角可导出 CSV（含优先级来源与模型建议，便于复核）。</li>
         <li>「开发跟进」页的填写内容<b>不进 Excel</b>：先存本机浏览器，用共享版网址打开时按字段同步到云端，多人同时改不同列不会互相覆盖；改动后表格不会跳回顶部。</li>
+        <li><b>优先级与综合体量可在看板里直接改</b>：P 码总表 / 客户主表里点下拉与输入框即可，客户详情里也有同一组控件。改动存云端覆盖表，所有人 6 秒内看到，KPI、分档、图表、筛选同步重算；<b>源表原值保留可对照</b>，清空该格即撤销覆盖、回到源表值。体量填<b>原文</b>，按同一套汇率自动折美元并重新分档；原文里没有金额就如实变成「未量化」，不编数字。被人工改过的行会带一个「改」标记。</li>
         <li>本文件为<b>单文件离线看板</b>，无任何外部依赖，双击即可打开。</li>
       </ul></div></div>`;
   }
@@ -3740,10 +3966,31 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     render();
   }
 
+  /* 优先级 / 体量的行内与抽屉编辑：change（下拉选定、输入框失焦）即保存。
+     绑在 document 上，视图反复重绘也不用重新绑。 */
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (!t || !t.dataset || !t.dataset.of || !t.dataset.oid) return;
+    const c = APP.customers.filter((x) => x.id === t.dataset.oid)[0];
+    if (!c) return;
+    ovrSet(c, t.dataset.of, t.value);
+  });
+
   W.UI = {
     init, render, state, openDrawer, closeDrawer, card, kpi, pChip, levelChip, coopChip, contactChip,
     scaleCell, tierDot, prodChips, sortList, exportCSV, PROFILE, IS_R, LIST, TITLE_WORD,
     indChip, IND_COLOR, IND_KEYS, renderMapOnly, setMapZoom,
+    pCell, scaleCellEd,
+  };
+  /* 供 sync.js 回填、供测试与录入页调用 */
+  W.OVR_APPLY = ovrApply;
+  W.OVR = {
+    rows: () => OVR_ROWS,
+    of: ovrOf,
+    set: ovrSet,
+    key: ovrKey,
+    can: canOvr,
+    count: () => OVR_ROWS.filter((x) => x && (x.p || x.scale_text)).length,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
@@ -6532,6 +6779,11 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
   /* 手工录入的新客户单独一张表：源表每次重跑都会覆盖 __DATA__，
      只有存云端才不会被冲掉，也才能多人共享。 */
   const EXTRA_TABLE = 'customers_extra';
+  /* 人工覆盖表：看板上直接改的「优先级 / 综合体量」。
+     为什么不改源表：Excel 每次 update.py 重跑都会覆盖 __DATA__，改了也会被冲掉；
+     存云端后由 model.js 在构建结果上再叠加一次，既实时共享又不会被重跑吃掉。
+     空字符串表示「撤销覆盖，回到源表值」。 */
+  const OVR_TABLE = 'customer_overrides';
   /* 跟进历史留痕表：每次跟进字段落库后追加一行（不改不删），
      抽屉里的「跟进历史」时间线读它。库还没建这张表时优雅降级，不影响主流程。 */
   const HIST_TABLE = 'pipe_history';
@@ -6559,6 +6811,9 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
       saveExtra() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
       removeExtra() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
       savePipe() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
+      saveOvr() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
+      saveOvrBulk() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
+      logHist() { return Promise.resolve(); },
       hist() { return Promise.resolve({ data: [], missing: true }); },
       enabled: false,
     };
@@ -6717,6 +6972,7 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
       if (W.PIPE && W.PIPE.applyRemote) W.PIPE.applyRemote(data || []);
       flush();
       pullExtra();
+      pullOvr();
     } catch (e) {
       setStatus('offline', (e && (e.message || e.code)) || '拉取失败');
     } finally {
@@ -6736,8 +6992,35 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     }
   }
 
-  async function saveExtra(row) {
-    if (!ready || !cloud) throw new Error('云端还没连上，稍等两秒再点保存');
+  /* 人工覆盖（优先级 / 综合体量）：跟跟进记录同节奏拉取，读失败静默
+     （老部署或还没建这张表时，看板照常用源表值） */
+  async function pullOvr() {
+    try {
+      const { data, error } = await cloud.database.from(OVR_TABLE).select('*');
+      if (error) return;
+      if (W.OVR_APPLY) W.OVR_APPLY(data || []);
+    } catch (e) {
+      /* 忽略：没有这张表 / 网络抖动，下次轮询再试 */
+    }
+  }
+
+  async function saveOvr(row) {
+    if (!ready || !cloud) throw new Error('云端还没连上，稍等两秒再保存');
+    const r = await cloud.database.from(OVR_TABLE).upsert(row, { onConflict: 'id' });
+    if (r.error) throw r.error;
+    return true;
+  }
+
+  async function saveOvrBulk(rows) {
+    if (!ready || !cloud) throw new Error('云端还没连上，稍等两秒再保存');
+    for (let i = 0; i < rows.length; i += 80) {
+      const r = await cloud.database.from(OVR_TABLE).upsert(rows.slice(i, i + 80), { onConflict: 'id' });
+      if (r.error) throw r.error;
+    }
+    return rows.length;
+  }
+
+  async function saveExtra(row) {    if (!ready || !cloud) throw new Error('云端还没连上，稍等两秒再点保存');
     const r = await cloud.database.from(EXTRA_TABLE).upsert(row, { onConflict: 'id' });
     if (r.error) throw r.error;
     return true;
@@ -6934,6 +7217,9 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     saveExtra,
     removeExtra,
     savePipe,
+    saveOvr,
+    saveOvrBulk,
+    logHist,
     hist: histOf,
     enabled: true,
   };

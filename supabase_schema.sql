@@ -139,6 +139,37 @@ DROP POLICY IF EXISTS hist_insert ON public.pipe_history;
 CREATE POLICY hist_read   ON public.pipe_history FOR SELECT TO anon, authenticated USING (true);
 CREATE POLICY hist_insert ON public.pipe_history FOR INSERT TO anon, authenticated WITH CHECK (true);
 
+-- ---------- 表四：人工覆盖（优先级 / 综合体量，2026-11 新增） ----------
+-- 看板上直接改的 P 码与体量原文。为什么不改源表：Excel 每次 update.py 重跑都会覆盖
+-- 内置数据，改了也会被冲掉；单独存这张表，构建后再叠加一次，既实时共享又不会被重跑吃掉。
+-- 空字符串 = 撤销该项覆盖、回到源表原值（不是「改成空」）。
+CREATE TABLE IF NOT EXISTS public.customer_overrides (
+  id          text PRIMARY KEY,             -- 与跟进记录同一主键：类型|去空白客户名
+  ctype       text NOT NULL,
+  customer    text NOT NULL,
+  p           text DEFAULT '',              -- P1 / P2 / P3 / 空=不覆盖
+  scale_text  text DEFAULT '',              -- 体量原文，如「250~260 亿美元」
+  updated_by  text,
+  updated_at  timestamptz DEFAULT now()
+);
+
+COMMENT ON TABLE public.customer_overrides IS '看板内人工覆盖的优先级与综合体量；构建后由 model.js 叠加，源表值保留可撤销';
+
+DROP TRIGGER IF EXISTS ovr_touch_ts ON public.customer_overrides;
+CREATE TRIGGER ovr_touch_ts
+  BEFORE INSERT OR UPDATE ON public.customer_overrides
+  FOR EACH ROW EXECUTE FUNCTION public.touch_updated_at();
+
+GRANT SELECT, INSERT, UPDATE ON public.customer_overrides TO anon, authenticated;
+ALTER TABLE public.customer_overrides ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS ovr_read   ON public.customer_overrides;
+DROP POLICY IF EXISTS ovr_write  ON public.customer_overrides;
+DROP POLICY IF EXISTS ovr_update ON public.customer_overrides;
+CREATE POLICY ovr_read   ON public.customer_overrides FOR SELECT TO anon, authenticated USING (true);
+CREATE POLICY ovr_write  ON public.customer_overrides FOR INSERT TO anon, authenticated WITH CHECK (true);
+CREATE POLICY ovr_update ON public.customer_overrides FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
+
 -- 执行完成后：
 --   1. python src/migrate_to_supabase.py --check   验证连通
 --   2. python src/migrate_to_supabase.py --seed    灌入本地种子（Evelyn 680 条 + 手工录入 2 家）

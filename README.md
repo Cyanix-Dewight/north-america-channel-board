@@ -585,7 +585,10 @@ python update.py --rollback
 
 ### 重建与发布命令
 
+**默认：每次更新完自动发布**（2026-11-19 用户确认的口径），发布 = 下面三步一起做完，不再逐次询问。
+
 ```bash
+node --max-old-space-size=8192 smoke5.js   # 先过回归，失败就别发
 python build_v5.py       # 生成 全球渠道总看板.html
 python publish.py        # 同步到 site/、dashboard/、docs/ 三份副本
 # 1) 共享版（能同步）

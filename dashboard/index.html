@@ -646,6 +646,43 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
 .chip.agt:hover{background:#E0E7FF;border-color:#A5B4FC}
 
+/* ===== 竞品关联（comp.js）：品牌 → 客户 双向打通 ===== */
+.cmplist{display:flex;flex-direction:column;gap:2px}
+.cmpitem{border-bottom:1px solid var(--line-2)}
+.cmpitem:last-child{border-bottom:0}
+.cmpitem>summary{display:grid;grid-template-columns:1.35fr 118px 92px 1.5fr 148px;align-items:center;gap:10px;
+  padding:7px 4px;cursor:pointer;list-style:none;font-size:12px;border-radius:6px}
+.cmpitem>summary::-webkit-details-marker{display:none}
+.cmpitem>summary:hover{background:var(--panel-2)}
+.cmpitem>summary::before{content:"▸";position:absolute;margin-left:-14px;color:var(--ink-3);font-size:10px}
+.cmpitem[open]>summary::before{content:"▾"}
+.cmpitem>summary{padding-left:18px;position:relative}
+.cmpitem .b{font-weight:650;color:var(--ink);display:flex;align-items:baseline;gap:6px;min-width:0}
+.cmpitem .b .cn{font-style:normal;font-size:10.5px;color:var(--ink-3);font-weight:400}
+.cmpitem .n{font-variant-numeric:tabular-nums;color:var(--ink);font-weight:600}
+.cmpitem .n .split{display:block;font-size:10px;color:var(--ink-3);font-weight:400}
+.cmpitem .k{font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:11.5px}
+.cmpitem .src{font-size:10.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmpitem .sh{font-size:10.5px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmpbody{padding:2px 4px 12px 18px}
+.cmpchips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:7px}
+.cmpc{display:inline-flex;align-items:center;gap:5px;font:inherit;font-size:11px;padding:3px 7px;border-radius:6px;
+  background:var(--panel);border:1px solid var(--line);color:var(--ink-2);cursor:pointer;line-height:1.4}
+.cmpc:hover{border-color:var(--brand-2);background:var(--brand-soft);color:var(--brand)}
+.cmpc i{font-style:normal;font-size:9.5px;color:var(--ink-3);background:var(--panel-2);border-radius:4px;padding:0 3px}
+.cmpc b{font-weight:600;color:var(--ink-3);font-size:10px;font-variant-numeric:tabular-nums}
+.cmpq{font-size:11px;color:var(--ink-2);line-height:1.65;margin-top:2px}
+.cmpq>div{padding-left:8px;border-left:2px solid var(--line);margin-bottom:3px}
+.cmpq .muted,.cmpsh,.cmpitem .muted{color:var(--ink-3)}
+.cmpsh{display:flex;flex-direction:column;gap:2px;font-size:10.5px;margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
+.cmpsect .cmpt{margin-top:2px}
+.cmpsect .cmpt td{vertical-align:top}
+.cmplink{color:var(--brand);cursor:help;font-size:10.5px}
+@media (max-width:860px){
+  .cmpitem>summary{grid-template-columns:1fr 76px;row-gap:2px}
+  .cmpitem .src,.cmpitem .sh{display:none}
+}
+
 </style>
 </head>
 <body>
@@ -655,7 +692,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-19 11:14<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-19 11:34<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -2905,6 +2942,480 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 })();
 </script>
 <script>/* ============================================================
+   comp.js — 竞品关联层（客户 ⇄ 竞品档案 双向打通）
+
+   解决什么问题：竞品信息现在散在三处——
+     ① 零售商的「头部竞品品牌」/「头部竞品品牌体量」
+     ② 代理商的「合作竞品」/「是否代理直接竞品」
+     ③ 备注、一句话简介里的自由文字（「对标 Logitech」「Yealink 占大头」）
+   三处各写各的，竞品页只看得到 ① 里的 SKU 文本，② ③ 完全没进面板。
+   这里把它们解析成统一的「品牌 → 客户」关联，两边都能点着走。
+
+   铁律：
+     · 只认表里真出现过的品牌词，不推断、不补全；识别不到就不出关联。
+     · 每个关联都带来源（哪一列 / 备注原句），可逐条复核。
+     · 否定语境不算（「不代理 Logitech」不产生关联）。
+     · 数据实时派生：改字段、写备注、云端同步回来，下一次渲染自动重算，不用重新构建。
+   ============================================================ */
+(function (W) {
+  'use strict';
+  const APP = W.APP, CORE = W.CORE;
+  const esc = CORE.esc;
+
+  /* ---------- 1. 品牌底表 ----------
+     只收这张表（客户字段 / 竞品档案 / 备注）里真出现过的品牌与写法，
+     加中文名。同一家公司的不同写法并到一个 key；AVer（圆展）与 AVerMedia（圆刚）是两家，分开。
+     新增品牌时往这里加一行即可，其余自动生效。 */
+  const SEED = [
+    ['Logitech', '罗技', 'Logi'],
+    ['Razer', '雷蛇'],
+    ['Insta360', '影石', 'Insta 360'],
+    ['EMEET', 'Emeet'],
+    ['Yealink', '亿联'],
+    ['AVer', 'Aver', 'AVer Information', 'AVer Information Inc', '圆展'],
+    ['AVerMedia', 'AverMedia', 'Avermedia', '圆刚'],
+    ['PTZOptics', 'PTZ Optics'],
+    ['BirdDog', 'Bird Dog'],
+    ['BZBGEAR', 'BZB GEAR'],
+    ['Lumens'],
+    ['HuddleCamHD', 'HuddleCam', 'Huddlecam'],
+    ['Huddly'],
+    ['Poly', 'Plantronics', '缤特力'],
+    ['Jabra'],
+    ['Owl Labs'],
+    ['Elgato'],
+    ['NexiGo'],
+    ['Marshall Electronics', 'Marshall', 'Marshall Eletronics'],
+    ['Bolin Technology', 'Bolin'],
+    ['Panasonic', '松下'],
+    ['Sony', 'SONY', '索尼'],
+    ['Canon', '佳能'],
+    ['Vaddio'],
+    ['Cisco', '思科'],
+    ['Microsoft', '微软'],
+    ['YoloLiv', 'Yololiv', 'YoloLive'],
+    ['Atomos'],
+    ['Mevo'],
+    ['IPEVO'],
+    ['ROCWARE', 'Rocware'],
+    ['VDO360'],
+    ['Konftel'],
+    ['Adesso', 'Adessp'],
+    ['Inland'],
+    ['XbotGo'],
+    ['Hollyland', '猛玛'],
+    ['Blackmagic Design', 'Blackmagic', 'Blackmagic Deign'],
+    ['Datavideo', 'DataVideo'],
+    ['Kramer'],
+    ['Crestron'],
+    ['Neat'],
+    ['Barco'],
+    ['ViewSonic', '优派'],
+    ['BenQ', 'BenQ Corporation'],
+    ['Anker', 'AnkerWork'],
+    ['Onn'],
+    ['Heyday'],
+    ['Telycam'],
+    ['Magewell', 'Magwell'],
+    ['Epiphan'],
+    ['Feelworld'],
+    ['Movo'],
+    ['AIDA', 'Aida'],
+    ['Delton'],
+    ['WyreStorm'],
+    ['PureLink'],
+    ['Avonic'],
+    ['DigitaLinx'],
+    ['WolfPack'],
+    ['Liberty AV'],
+    ['4XEM'],
+    ['C2G'],
+    ['Kensington'],
+    ['Targus'],
+    ['Eufy'],
+    ['Bose'],
+    ['JVC'],
+    ['Supersonic'],
+    ['Arozzi'],
+    ['Thronmax'],
+    ['Nuroum'],
+    ['Bytech'],
+    ['iCAN'],
+    ['Moertek'],
+    ['Klip Xtreme'],
+    ['Visiontek', 'VisionTek'],
+    ['Aluratek'],
+    ['Codi'],
+    ['Creative', 'Creative Labs', 'Creative Live'],
+    ['Cyber Acoustics'],
+    ['Genius'],
+    ['J5Create', 'j5 Create'],
+    ['JLab', 'JLAB', 'JLab Audio'],
+    ['DLink', 'D-Link'],
+    ['Asus', '华硕'],
+    ['HP', 'Hewlett Packard', '惠普'],
+    ['Dell', '戴尔'],
+    ['Lenovo', '联想', 'ThinkVision'],
+    ['ALOGIC'],
+    ['Green Extreme'],
+    ['Helix'],
+    ['Fomako', 'FoMaKo'],
+    ['Supersonic'],
+  ];
+
+  const SELF = 'obsbot';
+  const CN_ALIAS = {}, CN_BY_KEY = {}, DISPLAY = {}, SURF_BASE = {}, KEY_ALIAS = {};
+  const norm = (s) => String(s == null ? '' : s).toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, '');
+  const isCN = (s) => /^[\u4e00-\u9fa5]+$/.test(s);
+
+  function reg(display, aliases) {
+    const key = norm(display);
+    if (!key) return;
+    DISPLAY[key] = display;
+    SURF_BASE[key] = SURF_BASE[key] || [];
+    [display].concat(aliases || []).forEach((a) => {
+      const s = String(a == null ? '' : a).trim();
+      if (!s) return;
+      if (isCN(s)) { CN_ALIAS[s] = key; if (!CN_BY_KEY[key]) CN_BY_KEY[key] = s; }
+      KEY_ALIAS[norm(s)] = key;                    // 「Hewlett Packard」→ hewlettpackard → hp
+      if (SURF_BASE[key].indexOf(s) < 0) SURF_BASE[key].push(s);
+    });
+  }
+  SEED.forEach((row) => reg(row[0], row.slice(1)));
+  reg('OBSBOT', ['寻影']);   // 我方：不进竞品关联，但要能识别出来跳过
+
+  // 列表型字段里的噪声（不是公司名）
+  const NOISE = /^(?:\/|-|—|–|无|暂无|n\/?a|na|null|官网未揭露|未揭露|未记录|未知|待补|待核实|数据|webcam|ptz(\s*camera)?|live\s*stream|console|摄像机|摄像头|切换台|others?)$/i;
+
+  function keyOf(surface) {
+    const raw = String(surface == null ? '' : surface).trim();
+    if (!raw) return '';
+    if (CN_ALIAS[raw]) return CN_ALIAS[raw];
+    const k = norm(raw);
+    return (k && KEY_ALIAS[k]) || k || '';
+  }
+
+  /* 清理一个列表字段里的单个词元：
+     「Logitech: 36 SKU ($30 - 4007)」→ Logitech；「AVer（圆展）」→ AVer，括号里的中文名顺手收成别名 */
+  const CN_DYN = {};
+  function cleanToken(t) {
+    let s = String(t == null ? '' : t).trim();
+    s = s.replace(/^[\s\-–—·•*、,，;；/\\|]+/, '');
+    const pm = s.match(/[（(]\s*([\u4e00-\u9fa5]{2,8})\s*[）)]\s*$/);
+    if (pm) {
+      const k0 = keyOf(s.replace(/[（(][^）)]*[）)]\s*$/, '').trim());
+      if (k0 && !CN_ALIAS[pm[1]]) CN_DYN[pm[1]] = k0;
+      s = s.replace(/[（(][^）)]*[）)]\s*$/, '').trim();
+    }
+    s = s.split(/[:：]/)[0].trim();
+    s = s.replace(/^[\s\-–—·•*]+/, '').replace(/\s+/g, ' ').trim();
+    return s;
+  }
+  function tokenBrands(text) {
+    const out = [];
+    String(text == null ? '' : text).split(/[、,，;；/|\\\n\r]+/).forEach((raw) => {
+      const s = cleanToken(raw);
+      if (!s || s.length > 30 || NOISE.test(s)) return;
+      const k = keyOf(s);
+      if (!k) return;
+      out.push({ key: k, surface: s });
+    });
+    return out;
+  }
+
+  /* ---------- 2. 竞品档案（第 3 张表）索引 ----------
+     注意：这份 47 行的「头部品牌与竞品格局」只存在于原始数据里，
+     dashboard 侧没有把它挂到 APP 上（app.js 未参与构建），所以直接读 __DATA__。 */
+  let SHEET = null;
+  function sheetRows() {
+    if (APP.competitors && APP.competitors.length) return APP.competitors;
+    const D = W.__DATA__;
+    if (!D || !D.sheets) return [];
+    const s = D.sheets.filter((x) => x.name === '头部品牌与竞品格局')[0];
+    if (!s) return [];
+    const H = s.headers;
+    const g = (row, n) => { const i = H.indexOf(n); return i < 0 ? '' : String(row[i] == null ? '' : row[i]).trim(); };
+    return s.rows.map((row) => ({
+      platform: g(row, '平台名称'),
+      brand: g(row, '品牌'),
+      revenue: g(row, '品牌/公司营收'),
+      bizRevenue: g(row, '相关业务收入'),
+      sku: g(row, '平台内可确认独立 SKU 数'),
+      sample: g(row, '代表性型号'),
+      priceBand: g(row, '价格区间（USD）'),
+      relation: g(row, '与 OBSBOT 的竞争关系'),
+      obsbotModel: g(row, 'OBSBOT 对应型号'),
+      source: g(row, '数据来源'),
+    }));
+  }
+  function sheetIndex() {
+    if (SHEET) return SHEET;
+    SHEET = {};
+    sheetRows().forEach((d) => {
+      const s = cleanToken(d.brand);
+      const k = keyOf(s);
+      if (!k || k === SELF) return;
+      if (!DISPLAY[k]) DISPLAY[k] = s;
+      if (!SHEET[k]) SHEET[k] = { key: k, name: DISPLAY[k] || s, rows: [] };
+      SHEET[k].rows.push(d);
+    });
+    return SHEET;
+  }
+
+  /* ---------- 3. 自由文本匹配 ---------- */
+  let TXT_RE = null;
+  let SURF = null;                       // key → 出现的写法（底表 + 数据里见过的变体）
+  function addSurface(key, surface) {
+    const s = String(surface == null ? '' : surface).trim();
+    if (!s || s.length < 2 || s.length > 26) return;
+    if (!SURF[key]) SURF[key] = [];
+    if (SURF[key].indexOf(s) < 0) SURF[key].push(s);
+  }
+  const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  function buildTextRegex() {
+    const parts = [];
+    Object.keys(SURF).forEach((k) => {
+      if (k === SELF) return;
+      SURF[k].forEach((s) => {
+        if (NOISE.test(s)) return;
+        parts.push(/^[A-Za-z0-9]/.test(s)
+          ? '(?<![A-Za-z0-9])' + escRe(s) + '(?![A-Za-z0-9])'
+          : escRe(s));
+      });
+    });
+    Object.keys(CN_DYN).forEach((cn) => { if (CN_DYN[cn] !== SELF) parts.push(cn); });
+    parts.sort((a, b) => b.length - a.length);   // 长的优先：「AVerMedia」不被「AVer」抢
+    try { TXT_RE = new RegExp('(' + parts.join('|') + ')', 'gi'); } catch (e) { TXT_RE = null; }
+    return TXT_RE;
+  }
+  const NEG = /(?:不|未|没|无|非|别|勿|排除|而非|不是|不用|不再|不代理|没代理)[^，。；\n]{0,8}$/;
+  function quoteOf(text, idx, len) {
+    const s = String(text);
+    let a = idx;
+    while (a > 0 && !/[。；;\n\r]/.test(s[a - 1])) a--;
+    let b = idx + len;
+    while (b < s.length && !/[。；;\n\r]/.test(s[b])) b++;
+    const q = s.slice(a, b).replace(/\s+/g, ' ').trim();
+    return q.length > 90 ? q.slice(0, 90) + '…' : q;
+  }
+  function scanText(text, label, put) {
+    const s = String(text == null ? '' : text);
+    if (!s) return;
+    const re = buildTextRegex();
+    if (!re) return;
+    re.lastIndex = 0;
+    let m, guard = 0;
+    while ((m = re.exec(s)) && guard++ < 200) {
+      const surface = m[1];
+      const key = keyOf(surface);
+      if (!key || key === SELF) continue;
+      if (NEG.test(s.slice(Math.max(0, m.index - 10), m.index))) continue;
+      put({ key, surface, src: label, quote: quoteOf(s, m.index, surface.length) });
+    }
+  }
+
+  /* ---------- 4. 单个客户的竞品关联 ---------- */
+  const SRC_ORDER = ['体量列', '品牌列', '合作竞品', '简介', '备注', '跟进备注'];
+
+  function itemsOf(c) {
+    if (!c) return [];
+    sheetIndex();
+    const bag = {};
+    let order = 0;
+    const put = (o) => {
+      const b = bag[o.key] || (bag[o.key] = { key: o.key, name: '', surfaces: [], sources: [], quote: '', sku: null, lo: null, hi: null, _i: order++ });
+      if (b.surfaces.indexOf(o.surface) < 0) b.surfaces.push(o.surface);
+      if (b.sources.indexOf(o.src) < 0) b.sources.push(o.src);
+      if (o.quote && !b.quote) b.quote = o.quote;
+      if (o.sku != null && (b.sku == null || o.sku > b.sku)) b.sku = o.sku;
+      if (o.lo != null && (b.lo == null || o.lo < b.lo)) b.lo = o.lo;
+      if (o.hi != null && (b.hi == null || o.hi > b.hi)) b.hi = o.hi;
+    };
+
+    // ① 体量列（已解析的结构化 SKU，最可信）
+    (c.sku && c.sku.list ? c.sku.list : []).forEach((b) => {
+      const s = cleanToken(b.brand);
+      const k = keyOf(s);
+      if (!k || k === SELF) return;
+      put({ key: k, surface: s, src: '体量列', sku: b.sku, lo: b.lo, hi: b.hi });
+    });
+    // ② 品牌列（零售）
+    tokenBrands(c.compBrandText).forEach((t) => put({ key: t.key, surface: t.surface, src: '品牌列' }));
+    // ③ 合作竞品（代理）
+    tokenBrands(c.brandText).forEach((t) => put({ key: t.key, surface: t.surface, src: '合作竞品' }));
+    // ④ 自由文本：一句话简介 / 原表备注 / 跟进备注
+    scanText(c.intro, '简介', put);
+    scanText(c.remark, '备注', put);
+    try {
+      const r = W.PIPE && W.PIPE.rec ? W.PIPE.rec(c) : null;
+      if (r && r.note) scanText(r.note, '跟进备注', put);
+      if (r && r.difficulty) scanText(r.difficulty, '跟进备注', put);
+    } catch (e) {}
+
+    return Object.keys(bag).map((k) => {
+      const b = bag[k];
+      b.name = DISPLAY[k] || b.surfaces.sort((x, y) => y.length - x.length)[0] || k;
+      b.sources.sort((a, c2) => SRC_ORDER.indexOf(a) - SRC_ORDER.indexOf(c2));
+      b.sheet = sheetIndex()[k] || null;
+      b.cn = b.name === (CN_BY_KEY[k] || '') ? '' : (CN_BY_KEY[k] || CN_DYN[b.name] || '');
+      return b;
+    }).sort((a, b) => (b.sku || 0) - (a.sku || 0) || a._i - b._i);
+  }
+
+  /* ---------- 5. 全量索引（带指纹缓存：数据一动就重算） ---------- */
+  let CACHE = null;
+  function fingerprint() {
+    let h = 0;
+    const push = (s) => {
+      s = s == null ? '' : String(s);
+      for (let i = 0; i < s.length; i++) h = (h * 33 + s.charCodeAt(i)) | 0;
+      h = (h * 33 + 31) | 0;
+    };
+    (APP.customers || []).forEach((c) => {
+      push(c.id); push(c.compBrandText); push(c.skuText); push(c.brandText);
+      push(c.intro); push(c.remark); push(c.note);
+      if (c.fovr) push(Object.keys(c.fovr).join(','));
+    });
+    try {
+      const db = (W.PIPE && W.PIPE.DB) ? W.PIPE.DB() : null;
+      if (db) Object.keys(db).forEach((k) => { push(k); push(db[k].note); push(db[k].difficulty); });
+    } catch (e) {}
+    return h;
+  }
+  function index() {
+    const fpv = fingerprint();
+    const n = (APP.customers || []).length;
+    if (CACHE && CACHE.fp === fpv && CACHE.n === n) return CACHE;
+
+    // 写法池：底表 + 数据里真出现过的变体（这样备注里只出现一次的写法也能匹配上）
+    SURF = {};
+    Object.keys(SURF_BASE).forEach((k) => SURF_BASE[k].forEach((s) => addSurface(k, s)));
+    sheetIndex();
+    const scanSurfaces = (fn) => (APP.customers || []).forEach(fn);
+    scanSurfaces((c) => {
+      (c.sku && c.sku.list ? c.sku.list : []).forEach((b) => {
+        const s = cleanToken(b.brand); const k = keyOf(s); if (k && k !== SELF) addSurface(k, s);
+      });
+      tokenBrands(c.compBrandText).forEach((t) => addSurface(t.key, t.surface));
+      tokenBrands(c.brandText).forEach((t) => addSurface(t.key, t.surface));
+    });
+    TXT_RE = null;
+
+    const byKey = {}, perCust = {};
+    (APP.customers || []).forEach((c) => {
+      const items = itemsOf(c);
+      perCust[c.id] = items;
+      items.forEach((it) => {
+        const b = byKey[it.key] || (byKey[it.key] = {
+          key: it.key, name: it.name, cn: it.cn || '', cust: [], nR: 0, nA: 0, skuTotal: 0,
+          sources: {}, sheet: it.sheet, quotes: [],
+        });
+        b.cust.push({ c, it });
+        if (c.type === 'retailer') b.nR++; else b.nA++;
+        b.skuTotal += it.sku || 0;
+        it.sources.forEach((s) => { b.sources[s] = (b.sources[s] || 0) + 1; });
+        if (it.quote && b.quotes.length < 3) b.quotes.push({ name: c.name, quote: it.quote, src: it.sources[0] });
+      });
+    });
+    const list = Object.keys(byKey).map((k) => byKey[k])
+      .sort((a, b) => b.cust.length - a.cust.length || b.skuTotal - a.skuTotal || (a.name > b.name ? 1 : -1));
+    CACHE = { fp: fpv, n, byKey, list, perCust };
+    return CACHE;
+  }
+  function invalidate() { CACHE = null; SHEET = null; TXT_RE = null; }
+  function of(c) { return (c && index().perCust[c.id]) || []; }
+  function sheetOf(key) { return sheetIndex()[key] || null; }
+
+  /* ---------- 6. 界面：竞品页的「品牌 × 客户关联」卡片 ---------- */
+  function srcText(sources) {
+    return Object.keys(sources).sort((a, b) => sources[b] - sources[a])
+      .map((s) => s + ' ' + sources[s]).join(' · ');
+  }
+  function card(list, opt) {
+    const idx = index();
+    const rows = idx.list.filter((b) => b.cust.length);
+    if (!rows.length) {
+      return `<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>品牌 × 客户关联</h3>
+        <span class="hint">原表字段 + 备注自动解析</span></div>
+        <div class="card-b"><div class="empty">还没有客户记录竞品信息 —— 在「头部竞品品牌 / 合作竞品」写品牌名，或在备注里写品牌，这里会自动出现关联</div></div></div>`;
+    }
+    const top = rows.slice(0, (opt && opt.max) || 22);
+    const linked = rows.reduce((a, b) => a + b.cust.length, 0);
+    const fromNote = rows.reduce((a, b) => a + (b.sources['备注'] || 0) + (b.sources['跟进备注'] || 0) + (b.sources['简介'] || 0), 0);
+    const body = top.map((b) => {
+      const sh = b.sheet && b.sheet.rows.length ? b.sheet.rows : null;
+      const rel = sh ? (sh.find((r) => /直接竞争|最直接竞争/.test(r.relation || '')) || sh[0]) : null;
+      const custs = b.cust.slice().sort((x, y) => (y.it.sku || 0) - (x.it.sku || 0));
+      return `<details class="cmpitem">
+        <summary>
+          <span class="b">${esc(b.name)}${b.cn ? `<i class="cn">${esc(b.cn)}</i>` : ''}</span>
+          <span class="n">${b.cust.length} 家<span class="split">零售 ${b.nR} · 代理 ${b.nA}</span></span>
+          <span class="k">${b.skuTotal ? b.skuTotal.toLocaleString() + ' SKU' : '<span class="muted">未记 SKU</span>'}</span>
+          <span class="src">${esc(srcText(b.sources))}</span>
+          <span class="sh">${rel ? esc((sh.length > 1 ? '档案 ' + sh.length + ' 行' : (rel.platform || '档案'))) + ' · ' + esc(String(rel.relation || '').replace(/（.*?）/g, '').slice(0, 12)) : '<span class="muted">档案未收录</span>'}</span>
+        </summary>
+        <div class="cmpbody">
+          <div class="cmpchips">${custs.map((x) => `<button class="cmpc" data-cmp-id="${esc(x.c.id)}" title="${esc(x.c.name)} · 点开客户详情">${esc(x.c.name)}<i>${x.c.type === 'retailer' ? '零售' : '代理'}</i>${x.it.sku ? `<b>${x.it.sku}</b>` : ''}</button>`).join('')}</div>
+          ${b.quotes.length ? `<div class="cmpq">${b.quotes.map((q) => `<div>「${esc(q.quote)}」<span class="muted">— ${esc(q.name)} · ${esc(q.src)}</span></div>`).join('')}</div>` : ''}
+          ${sh ? `<div class="cmpsh">${sh.slice(0, 3).map((r) => `<span>${esc(r.platform || '')}：${esc(String(r.relation || '—').replace(/（.*?）/g, ''))}${r.obsbotModel ? ' · 对位 ' + esc(r.obsbotModel) : ''}${r.priceBand ? ' · ' + esc(r.priceBand) : ''}</span>`).join('')}</div>` : ''}
+        </div></details>`;
+    }).join('');
+
+    return `<div class="card" style="margin-bottom:14px">
+      <div class="card-h"><h3>品牌 × 客户关联</h3>
+        <span class="hint">原表「头部竞品品牌 / 体量 / 合作竞品」+ 简介与备注自动解析 · 点品牌展开客户清单</span>
+        <div class="right"><span class="chip plain">${rows.length} 个品牌</span>
+          <span class="chip plain">${linked} 条关联</span>
+          <span class="chip plain" title="从简介、原表备注、跟进备注里解析出来的关联（其余来自结构化字段）">备注带出 ${fromNote}</span></div></div>
+      <div class="card-b" style="padding-top:4px">
+        <div class="cmplist">${body}</div>
+        ${rows.length > top.length ? `<div class="mini muted" style="margin-top:8px">只列关联客户最多的 ${top.length} 个品牌，共 ${rows.length} 个。</div>` : ''}
+        <div class="note" style="margin-top:8px">一条关联 = 该客户的某个字段或备注里<b>真的写了</b>这个品牌。否定句不算（「不代理 Logitech」不会关联），
+          每个关联在客户详情里都标了来源与命中原句。改了字段或备注，这里立刻重算，不用重新构建。</div>
+      </div></div>`;
+  }
+
+  /* ---------- 7. 界面：客户详情里的「关联竞品」 ---------- */
+  function drawerSection(c) {
+    const items = of(c);
+    const head = `<h4>关联竞品 <span class="mini muted">（从原表字段与备注自动解析 · 改动即时生效）</span></h4>`;
+    if (!items.length) {
+      return `<div class="sect cmpsect">${head}
+        <div class="note">这一家还没有可识别的竞品信息。在「头部竞品品牌 / 合作竞品」写品牌名，或在备注里写「对标 Logitech」「Yealink 占大头」，保存后这里自动出现关联。</div>
+      </div>`;
+    }
+    const idx = index();
+    const rows = items.map((it) => {
+      const sh = it.sheet;
+      const rel = sh ? (sh.rows.find((r) => /直接竞争|最直接竞争/.test(r.relation || '')) || sh.rows[0]) : null;
+      const same = idx.byKey[it.key] ? idx.byKey[it.key].cust.filter((x) => x.c.id !== c.id) : [];
+      return `<tr>
+        <td><b>${esc(it.name)}</b>${it.cn ? ` <span class="mini muted">${esc(it.cn)}</span>` : ''}
+          <div class="mini muted">${esc(it.sources.join(' · '))}</div></td>
+        <td class="num">${it.sku != null ? it.sku + ' SKU' : '<span class="mini muted">—</span>'}</td>
+        <td class="mini">${it.lo != null ? '$' + it.lo + '–' + it.hi : '<span class="muted">未记录</span>'}</td>
+        <td class="mini">${rel ? esc(String(rel.relation || '').replace(/（.*?）/g, '')) + (rel.obsbotModel ? `<div class="muted">对位 ${esc(rel.obsbotModel)}</div>` : '') : '<span class="muted">档案未收录</span>'}</td>
+        <td class="mini">${same.length ? `<span class="cmplink" title="${esc(it.name)} 还有 ${same.length} 家：${esc(same.slice(0, 8).map((x) => x.c.name).join('、'))}${same.length > 8 ? ' 等' : ''}">同品牌另 ${same.length} 家</span>` : '<span class="muted">—</span>'}</td>
+      </tr>`;
+    }).join('');
+    const q = items.filter((i) => i.quote).slice(0, 3)
+      .map((i) => `<div>「${esc(i.quote)}」<span class="muted">— ${esc(i.sources.join(' / '))}</span></div>`).join('');
+    return `<div class="sect cmpsect">${head}
+      <table class="ftable cmpt"><thead><tr><th>品牌</th><th class="num">SKU</th><th>价格带</th><th>竞品档案</th><th>关联</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+      ${q ? `<div class="cmpq" style="margin-top:8px">${q}</div>` : ''}
+      <div class="note" style="margin-top:8px">品牌是从<b>这一家自己的字段与备注</b>里读出来的，不是按行业猜的；「竞品档案」一列来自「头部品牌与竞品格局」表。
+        改上面的原表字段或跟进备注，这里会跟着变。</div>
+    </div>`;
+  }
+
+  W.COMP = {
+    index, of, sheetOf, invalidate, card, drawerSection,
+    keyOf, tokenBrands, scanText, debug: (c) => itemsOf(c),
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script>/* ============================================================
    views_common.js — 两套看板共用的视图：总览 / P 码总表 / 体量分析 /
    总部地图 / 客户主表 / 方法页 + 抽屉 + 筛选 + 导出
    ============================================================ */
@@ -3841,6 +4352,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           ${skuRows}
         </div>
 
+        ${W.COMP ? W.COMP.drawerSection(c) : ''}
+
         <div class="sect rawsect" id="df-raw">
           <h4>原表字段 <span class="mini muted">（逐格可改 · 改完自动保存并同步给所有人${
             fovrCount ? ' · 已改 ' + fovrCount + ' 项' : ''}${rfEditable ? '' : ' · 本机模式只读'}）</span>
@@ -3884,6 +4397,12 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       if (!c) return;
       if (!window.confirm('把「' + c.name + '」的所有原表字段恢复成源表值？')) return;
       fieldRevertAll(c);
+    }));
+    /* 竞品页 / 关联竞品里的客户名：点一下就切到那家客户的详情（跨侧也能跳） */
+    $$('[data-cmp-id]', box).forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = b.getAttribute('data-cmp-id');
+      if (id) openDrawer(id);
     }));
     loadHist(box, c);
   }
@@ -4082,6 +4601,11 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
             两字品牌照样认（PC / LG / 3M 这类连写也认），但「我们是代理商」「增值分销代理商」「代理业务占比 60%」这类只描述身份的写法，以及
             「2B 代理」「B2B 代理」「IT 代理」「AV 代理」这类业务口径与行业缩写<b>不会</b>被误当成代理方；重分类留痕里的「按主要 2B 口径归代理侧」也不会。</li>
         <li><b>优先级与综合体量可在看板里直接改</b>：P 码总表 / 客户主表里点下拉与输入框即可，客户详情里也有同一组控件。改动存云端覆盖表，所有人 6 秒内看到，KPI、分档、图表、筛选同步重算；<b>源表原值保留可对照</b>，清空该格即撤销覆盖、回到源表值。体量填<b>原文</b>，按同一套汇率自动折美元并重新分档；原文里没有金额就如实变成「未量化」，不编数字。被人工改过的行会带一个「改」标记。</li>
+        <li><b>客户详情里的竞品与竞品页是联动的</b>：客户的「头部竞品品牌 / 头部竞品品牌体量 / 合作竞品」，以及<b>一句话简介与备注里提到的品牌</b>，
+            都会被解析成「品牌 → 客户」关联。竞品页有一张<b>品牌 × 客户关联</b>卡片：点品牌展开客户清单、显示来源（哪一列 / 备注原句）与合计 SKU；
+            客户详情里有<b>关联竞品</b>表：每个品牌标了来源、SKU、价格带，还能对上「头部品牌与竞品格局」里的档案行（竞争关系、OBSBOT 对位型号）。
+            两边都能点着走。同义写法会自动归一（PTZ Optics = PTZOptics、Hewlett Packard = HP、罗技 = Logitech），但 AVer（圆展）与 AVerMedia（圆刚）是两家、不合并；
+            <b>否定句不算</b>（「不代理 Logitech」不产生关联）。改了字段或备注立刻重算，不用重新构建。</li>
         <li><b>原表字段也能直接改</b>（客户详情最下面一节）：除<b>客户名</b>（跟进记录与覆盖记录的 id 都是「类型 + 客名」，改名会让历史变孤儿）、<b>优先级 / 综合体量</b>（有专用控件，要重算 P 档）外，每一格都能改，失焦即保存。改动存 <code>customer_overrides.fields</code>，<b>在 build 之前打到行上</b>。所以不是只改显示：改「国家」→ 地区归属、国家下拉、地图分组重算；改「一句话简介」→ 总部经纬度与目标行业重新解析；改竞品体量原文 → SKU 与价格带重新统计；空值仍是空，<b>不写成 0</b>。每格标「人工覆盖」并显示源表原值、改动人、时间，可逐格「恢复原表」或整段「全部恢复原表」，改动同样进「跟进历史」留痕。</li>
         <li>本文件为<b>单文件离线看板</b>，无任何外部依赖，双击即可打开。</li>
       </ul></div></div>`;
@@ -4289,6 +4813,12 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       openDrawer(tr.dataset.id);
     }));
     $$('.chip[data-id]', box).forEach((ch) => ch.addEventListener('click', () => openDrawer(ch.dataset.id)));
+    // 竞品关联里的客户名（可能在另一侧）：点开对应客户的详情
+    $$('[data-cmp-id]', box).forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = b.getAttribute('data-cmp-id');
+      if (id) openDrawer(id);
+    }));
     $$('th[data-sort]', box).forEach((th) => th.addEventListener('click', () => {
       const k = th.dataset.sort;
       if (state.sort.key === k) state.sort.dir = state.sort.dir === 'asc' ? 'desc' : 'asc';
@@ -5178,6 +5708,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <div class="mini muted" style="margin-top:8px">颜色越深 = 该品牌在该店 SKU 越多（对数标度）。空白 = 该店无此品牌记录。</div>
       </div></div>
 
+    ${W.COMP ? W.COMP.card(list) : ''}
+
     <div class="grid g-2" style="margin-bottom:14px">
       ${UI.card('各产品被建议的次数', '按门店数计', hbar(freqItems, { max: Math.max(1, ...freqItems.map((f) => f.value)), padL: 132, padR: 70, rowH: 30 }))}
       ${UI.card('品牌渠道覆盖度', '在多少家门店在售 × SKU 合计', hbar(topBrands.slice(0, 8).map((b) => ({
@@ -5444,6 +5976,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
             <div class="sc" style="font-size:11.5px">${c.judge ? c.judge.factors[0].v : '—'}</div>
           </div>`).join('')}</div>`)}
     </div>
+
+    ${W.COMP ? W.COMP.card(list) : ''}
 
     <div class="card">
       <div class="card-h"><h3>已合作代理 · 可扩的产品线</h3><span class="hint">合作中是最低成本的增量</span></div>

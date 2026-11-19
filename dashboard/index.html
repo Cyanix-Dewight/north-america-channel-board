@@ -692,7 +692,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-19 11:34<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-19 13:39<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -3214,8 +3214,20 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     }
   }
 
-  /* ---------- 4. 单个客户的竞品关联 ---------- */
+  /* ---------- 4. 单个客户的竞品关联 ----------
+     注意字段名：model.js 只把部分列挂到了对象上（零售侧没有 compBrandText、备注叫 note、
+     代理侧合作竞品叫 compRaw），所以一律先看对象字段、再回落到 raw 里的原表列名，
+     这样将来 Excel 加列、或者有人改了 model 的字段名，都不会让这里静默失效。 */
   const SRC_ORDER = ['体量列', '品牌列', '合作竞品', '简介', '备注', '跟进备注'];
+
+  function txtOf(c, names) {
+    for (let i = 0; i < names.length; i++) {
+      const n = names[i];
+      if (c[n] != null && String(c[n]).trim() !== '') return String(c[n]);
+      if (c.raw && c.raw[n] != null && String(c.raw[n]).trim() !== '') return String(c.raw[n]);
+    }
+    return '';
+  }
 
   function itemsOf(c) {
     if (!c) return [];
@@ -3239,13 +3251,13 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       if (!k || k === SELF) return;
       put({ key: k, surface: s, src: '体量列', sku: b.sku, lo: b.lo, hi: b.hi });
     });
-    // ② 品牌列（零售）
-    tokenBrands(c.compBrandText).forEach((t) => put({ key: t.key, surface: t.surface, src: '品牌列' }));
+    // ② 品牌列（零售）：「头部竞品品牌」
+    tokenBrands(txtOf(c, ['compBrandText', '头部竞品品牌'])).forEach((t) => { if (t.key !== SELF) put({ key: t.key, surface: t.surface, src: '品牌列' }); });
     // ③ 合作竞品（代理）
-    tokenBrands(c.brandText).forEach((t) => put({ key: t.key, surface: t.surface, src: '合作竞品' }));
+    tokenBrands(txtOf(c, ['brandText', 'compRaw', '合作竞品'])).forEach((t) => { if (t.key !== SELF) put({ key: t.key, surface: t.surface, src: '合作竞品' }); });
     // ④ 自由文本：一句话简介 / 原表备注 / 跟进备注
     scanText(c.intro, '简介', put);
-    scanText(c.remark, '备注', put);
+    scanText(txtOf(c, ['remark', 'note', '备注']), '备注', put);
     try {
       const r = W.PIPE && W.PIPE.rec ? W.PIPE.rec(c) : null;
       if (r && r.note) scanText(r.note, '跟进备注', put);
@@ -3272,8 +3284,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       h = (h * 33 + 31) | 0;
     };
     (APP.customers || []).forEach((c) => {
-      push(c.id); push(c.compBrandText); push(c.skuText); push(c.brandText);
-      push(c.intro); push(c.remark); push(c.note);
+      push(c.id); push(txtOf(c, ['compBrandText', '头部竞品品牌'])); push(txtOf(c, ['skuRaw', 'skuText', '头部竞品品牌体量']));
+      push(txtOf(c, ['brandText', 'compRaw', '合作竞品']));
+      push(c.intro); push(txtOf(c, ['remark', 'note', '备注']));
       if (c.fovr) push(Object.keys(c.fovr).join(','));
     });
     try {
@@ -3296,8 +3309,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       (c.sku && c.sku.list ? c.sku.list : []).forEach((b) => {
         const s = cleanToken(b.brand); const k = keyOf(s); if (k && k !== SELF) addSurface(k, s);
       });
-      tokenBrands(c.compBrandText).forEach((t) => addSurface(t.key, t.surface));
-      tokenBrands(c.brandText).forEach((t) => addSurface(t.key, t.surface));
+      tokenBrands(txtOf(c, ['compBrandText', '头部竞品品牌'])).forEach((t) => addSurface(t.key, t.surface));
+      tokenBrands(txtOf(c, ['brandText', 'compRaw', '合作竞品'])).forEach((t) => addSurface(t.key, t.surface));
     });
     TXT_RE = null;
 

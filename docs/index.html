@@ -692,7 +692,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 116 + 代理集成商 690（含新增名单 58 / 622）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-19 14:27<span id="sub-extra"></span></div>
+      <div class="sub">零售商 116 + 代理集成商 690（含新增名单 58 / 622）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-19 14:53<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -1143,10 +1143,17 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     [/^(video\s*bar|conference|会议)/i, 'console'],
   ];
 
+  /* 叙述式体量：「Logitech 8 款、Rapoo 5 款」/「OBSBOT 11款;Logitech 6款」/「榜单前 10 名…Logitech 3 款」。
+     原表里 Media Markt / Proshop / Bilka 就是这么写的，全句没有一处「品牌: N SKU」的标准格式。
+     品牌只认拉丁字母开头（中文叙述里的「前 10 名」「7 个自营」不会被当成品牌），
+     括号里的型号举例先剔掉（「Sandberg（Streamer Pro Elite）1 款」）。 */
+  const NARR_RE = /(?:^|[、,;。:：\s])([A-Za-z][A-Za-z0-9 .&'+\-]{0,24}?)\s*([\d]{1,4})\s*(?:款|个|台|种|支|SKU)/g;
+
   function parseSku(raw) {
     const out = { webcam: [], ptz: [], console: [], other: [] };
     const s = normText(raw);
     if (!s) return out;
+    const all = () => out.webcam.concat(out.ptz, out.console, out.other);
 
     // 先按换行 + 斜杠切段（同一行里可能用 / 串多个品牌）
     const segs = s.split(/[\r\n\/|]+/).map((x) => x.trim()).filter(Boolean);
@@ -1178,6 +1185,24 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       const hi = m[4] ? Number(m[4].replace(/,/g, '')) : m[3] ? Number(m[3].replace(/,/g, '')) : null;
       out[sec].push({ brand, sku, lo, hi: hi == null ? lo : hi });
     });
+
+    // 叙述式兜底：结构化格式没覆盖到的品牌，再按「品牌 + N 款」扫一遍。
+    // 同一品牌出现多次取最大值（「Logitech 8 款」与榜单段的「Logitech 3 款」不累加成 11）；
+    // 已经用「品牌: N SKU」解析出来的品牌直接跳过，不重复计数。
+    const nc = s.replace(/\([^)]*\)/g, ' ');
+    const seen = {};
+    NARR_RE.lastIndex = 0;
+    let mn;
+    while ((mn = NARR_RE.exec(nc)) !== null) {
+      const brand = mn[1].replace(/[.\s]+$/, '').trim();
+      const n = Number(mn[2]);
+      if (!brand || brand.length < 2 || brand.length > 28 || !n || n > 999) continue;
+      const k = brand.toLowerCase();
+      if (!seen[k] || seen[k].sku < n) seen[k] = { brand, sku: n, lo: null, hi: null };
+    }
+    const have = {};
+    all().forEach((x) => { have[String(x.brand).toLowerCase()] = 1; });
+    Object.keys(seen).forEach((k) => { if (!have[k]) out.other.push(seen[k]); });
     return out;
   }
 
@@ -2941,7 +2966,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   // 注意：attachHQ() 需在 APP.build() 之后调用，由 boot 脚本触发
 })();
 </script>
-<script>window.CLASSIFY_RULES = {"retailId":"brick-and-mortar retailer|retail chain|retail brand|retail giant|retail store|retail group|retailer|零售经销商|零售和电商|零售与电商|零售巨头|零售平台|零售门店|零售品牌|零售电商|线上零售|连锁零售|零售集团|零售企业|零售卖场|零售连锁|网络零售|零售商|零售店","store":"direct-to-consumer|amazon store|online store|online shop|marketplace|e-commerce|web store|ecommerce|shopify|webshop|在线商城|线上商店|线上销售|网上销售|在线销售|线上售卖|线上商城|电子商务|to C|网络销售|目录销售|直播带货|在线商店|网上商店|网上商城|实体店|DTC|专业店|影音店|toC|专卖店|体验店|乐器店|旗舰店|连锁店|B2C|集合店|会员店|零售点|相机店|大卖场|2C|门店|邮购|卖场|百货|电商|商超|店铺|商城|超市|分店|网店","channel":"service provider|system design|distributor|consultancy|wholesaler|integrator|consultant|installer|reseller|解决方案提供商|dealer|信息技术服务|技术系统设计|集成方案商|音视频设计|AV 设计|系统集成商|解决方案商|授权服务商|IT 服务|设计公司|维修中心|现场活动|工程咨询|IT服务|售后服务|声学设计|软件开发|授权维修|网站设计|活动制作|工程公司|技术支持|活动技术|软件服务|托管服务|整体方案|系统运维|网页设计|技术服务|系统集成|维修服务|集成商|分销商|安装商|供货商|渠道商|经销商|转售商|工程商|服务商|销售商|代理商|批发商|进口商|维修商|总代理|VAR|租赁商|方案商|承包商|MSP|贸易商|舞美|咨询|安装|集成|分销|经销|制片|代理|顾问|维修|总代|会展|租赁","project":"system design|consultancy|integrator|consultant|解决方案提供商|技术系统设计|集成方案商|音视频设计|AV 设计|系统集成商|解决方案商|设计公司|现场活动|工程咨询|声学设计|活动制作|工程公司|活动技术|托管服务|整体方案|系统运维|系统集成|集成商|工程商|VAR|方案商|MSP|舞美|咨询|顾问","enduser":"终端用户|终端客户|终端教育|终端医疗|终端演播室|终端使用方|大学|学院|学区|中学|高中|小学|学校|校区|球队|巡回赛|体育联盟|职业球|医院|医疗系统|医疗中心|医学院|诊所|市政府|市政|政府机构|公共机构|政府部门|教会|教堂|事工|教区|宗教|电视台|电台|广播网|广播机构|广播公司|广播电视|媒体集团|传媒集团|传媒|出版|杂志|媒体网络|媒体公司|新闻|测评|评测|导购|blog|博客|自媒体|工作室|制作公司|内容制作|影视制作|软件|平台|SaaS|广告科技|协会|信托|基金会|非营利|公益|博物馆|剧院|乐团|文化场馆|制造商|厂商|代工","weak":"零售|retail|售卖|销售|卖货"};</script>
+<script>window.CLASSIFY_RULES = {"retailId":"brick-and-mortar retailer|retail group|retail brand|retail giant|retail chain|retail store|retailer|零售和电商|零售经销商|零售与电商|零售企业|网络零售|连锁零售|零售电商|零售集团|零售品牌|零售卖场|零售门店|零售连锁|零售平台|线上零售|零售巨头|零售店|零售商","store":"direct-to-consumer|amazon store|online store|marketplace|online shop|e-commerce|ecommerce|web store|webshop|shopify|线上售卖|直播带货|网上商店|线上销售|在线商店|线上商城|电子商务|网络销售|在线商城|to C|网上销售|目录销售|线上商店|在线销售|网上商城|B2C|相机店|旗舰店|大卖场|影音店|专业店|乐器店|集合店|连锁店|DTC|零售点|会员店|专卖店|toC|体验店|实体店|分店|商超|门店|邮购|网店|2C|店铺|超市|电商|百货|卖场|商城","channel":"service provider|system design|distributor|consultancy|consultant|wholesaler|integrator|installer|reseller|解决方案提供商|信息技术服务|技术系统设计|dealer|授权服务商|解决方案商|系统集成商|音视频设计|集成方案商|AV 设计|IT 服务|授权维修|网站设计|工程咨询|技术支持|IT服务|活动制作|维修服务|售后服务|技术服务|网页设计|系统集成|活动技术|声学设计|系统运维|现场活动|工程公司|托管服务|维修中心|整体方案|软件开发|软件服务|设计公司|贸易商|销售商|进口商|集成商|维修商|方案商|供货商|经销商|服务商|安装商|总代理|工程商|租赁商|转售商|分销商|承包商|批发商|VAR|渠道商|代理商|MSP|经销|舞美|咨询|集成|租赁|顾问|分销|总代|会展|代理|安装|维修|制片","project":"system design|consultancy|consultant|integrator|解决方案提供商|技术系统设计|解决方案商|系统集成商|音视频设计|集成方案商|AV 设计|工程咨询|活动技术|活动制作|系统集成|声学设计|现场活动|系统运维|工程公司|托管服务|整体方案|设计公司|集成商|方案商|工程商|VAR|MSP|舞美|咨询|顾问","enduser":"终端用户|终端客户|终端教育|终端医疗|终端演播室|终端使用方|大学|学院|学区|中学|高中|小学|学校|校区|球队|巡回赛|体育联盟|职业球|医院|医疗系统|医疗中心|医学院|诊所|市政府|市政|政府机构|公共机构|政府部门|教会|教堂|事工|教区|宗教|电视台|电台|广播网|广播机构|广播公司|广播电视|媒体集团|传媒集团|传媒|出版|杂志|媒体网络|媒体公司|新闻|测评|评测|导购|blog|博客|自媒体|工作室|制作公司|内容制作|影视制作|软件|平台|SaaS|广告科技|协会|信托|基金会|非营利|公益|博物馆|剧院|乐团|文化场馆|制造商|厂商|代工","weak":"零售|retail|售卖|销售|卖货"};</script>
 <script>window.__SITE__ = [{"n":"EC Pro Video Systems Inc","v":"service","s":4,"g":["电商平台","加购/结账","标价","商品导航","项目/服务话术"],"u":"https://ecprostore.com"},{"n":"vip production nw","v":"service","s":1,"g":["加购/结账","商品导航","项目/服务话术"],"u":"https://www.vipproductionnw.com"},{"n":"Camera Corner Connecting Point","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://www.cccp.com"},{"n":"Ziestech Distributors","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://www.ziestech.com"},{"n":"Lorne Lapham Sales & Rentals","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://llsr.com"},{"n":"BJ Photo Labs","v":"retail","s":3,"g":["加购/结账","标价","商品导航"],"u":"https://www.bjphoto.net"},{"n":"Logesco","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://logesco.com"},{"n":"MelroseMAC","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://melrosemac.com"},{"n":"Resolution AV NYC","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://resolutionavnyc.com"},{"n":"The Penn Group","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://thepenn.group"},{"n":"Midwest Audio Visual","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://midwestaudiovisual.com"},{"n":"East West Associates LLC","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://www.eastwestassociatesllc.com"},{"n":"CCI Solutions","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://ccisolutions.com"},{"n":"Agility AV","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://www.agilityavl.com"},{"n":"VideoLink","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://videolink.com"},{"n":"MeyerPro","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://meyerproinc.com"},{"n":"SC Media Canada","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://www.scmediacanada.com"},{"n":"Professional commercial AV solutions service","v":"service","s":-1,"g":["项目/服务话术"],"u":"https://www.esikc.com"},{"n":"Soundbox Productions","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://soundboxpro.com"},{"n":"TelQuest International","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://www.telquestintl.com"},{"n":"epic rise electronics","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://epicriseelectronics.com"}];</script>
 <script>/* ============================================================
    classify.js — 客户身份判定（前端）
@@ -3078,7 +3103,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
      加中文名。同一家公司的不同写法并到一个 key；AVer（圆展）与 AVerMedia（圆刚）是两家，分开。
      新增品牌时往这里加一行即可，其余自动生效。 */
   const SEED = [
-    ['Logitech', '罗技', 'Logi'],
+    ['Logitech', '罗技', 'Logi', 'LogitechL'],   // LogitechL 是原表 Visions Electronics 那行的笔误，归一到 Logitech
     ['Razer', '雷蛇'],
     ['Insta360', '影石', 'Insta 360'],
     ['EMEET', 'Emeet'],
@@ -3095,6 +3120,9 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     ['Jabra'],
     ['Owl Labs'],
     ['Elgato'],
+    ['Rapoo', '雷柏'],
+    ['Sandberg'],
+    ['HAMA'],
     ['NexiGo'],
     ['Marshall Electronics', 'Marshall', 'Marshall Eletronics'],
     ['Bolin Technology', 'Bolin'],
@@ -3207,19 +3235,25 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   }
 
   /* 清理一个列表字段里的单个词元：
-     「Logitech: 36 SKU ($30 - 4007)」→ Logitech；「AVer（圆展）」→ AVer，括号里的中文名顺手收成别名 */
+     「Logitech: 36 SKU ($30 - 4007)」→ Logitech；「AVer（圆展）」→ AVer，括号里的中文名顺手收成别名；
+     「ISY 4 款（MediaMarkt 自有品牌）」→ ISY；「Razer 1 款（2 个挂牌）」→ Razer。
+     2026-11-19：原表现在有客户用「品牌 + N 款」的叙述写法，数量与括号注释都不属于品牌名。 */
   const CN_DYN = {};
   function cleanToken(t) {
     let s = String(t == null ? '' : t).trim();
     s = s.replace(/^[\s\-–—·•*、,，;；/\\|]+/, '');
     const pm = s.match(/[（(]\s*([\u4e00-\u9fa5]{2,8})\s*[）)]\s*$/);
     if (pm) {
-      const k0 = keyOf(s.replace(/[（(][^）)]*[）)]\s*$/, '').trim());
+      const base = s.replace(/[（(][^）)]*[）)]\s*$/, '').trim();
+      const k0 = keyOf(base.replace(/[\s:：\-–—]*[\d,]+\.?\d*\s*(?:款|个|台|种|支|件|SKU|sku)\s*$/, '').trim());
       if (k0 && !CN_ALIAS[pm[1]]) CN_DYN[pm[1]] = k0;
-      s = s.replace(/[（(][^）)]*[）)]\s*$/, '').trim();
     }
+    s = s.replace(/[（(][^）)]*[）)]/g, ' ');            // 括号里的型号举例 / 自有品牌说明一律不算品牌
+    s = s.replace(/[\s:：\-–—]*[\d,]+\.?\d*\s*(?:款|个|台|种|支|件|SKU|sku)\s*(?:挂牌)?\s*$/, '');
     s = s.split(/[:：]/)[0].trim();
     s = s.replace(/^[\s\-–—·•*]+/, '').replace(/\s+/g, ' ').trim();
+    // 纯数字 / 纯标点不是品牌：价格被千分位逗号切开后的「080.99)」这类碎片到此为止
+    if (!/[A-Za-z\u4e00-\u9fa5]/.test(s)) return '';
     return s;
   }
   function tokenBrands(text) {
@@ -3356,12 +3390,18 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     };
 
     // ① 体量列（已解析的结构化 SKU，最可信）
+    const skuRaw = txtOf(c, ['skuRaw', 'skuText', '头部竞品品牌体量']);
     (c.sku && c.sku.list ? c.sku.list : []).forEach((b) => {
       const s = cleanToken(b.brand);
       const k = keyOf(s);
       if (!k || k === SELF) return;
       put({ key: k, surface: s, src: '体量列', sku: b.sku, lo: b.lo, hi: b.hi });
     });
+    // ①b 体量列只写了品牌名、一个数字都没有（「Logitech、Insta360、Razer」或一行一个）：
+    //     照样关联，只是没有 SKU 数 —— 不能因为「没量化」就当作没记竞品。
+    if (!/\d/.test(skuRaw)) {
+      tokenBrands(skuRaw).forEach((t) => { if (t.key !== SELF) put({ key: t.key, surface: t.surface, src: '体量列' }); });
+    }
     // ② 品牌列（零售）：「头部竞品品牌」
     tokenBrands(txtOf(c, ['compBrandText', '头部竞品品牌'])).forEach((t) => { if (t.key !== SELF) put({ key: t.key, surface: t.surface, src: '品牌列' }); });
     // ③ 合作竞品（代理）
@@ -3422,6 +3462,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       });
       tokenBrands(txtOf(c, ['compBrandText', '头部竞品品牌'])).forEach((t) => addSurface(t.key, t.surface));
       tokenBrands(txtOf(c, ['brandText', 'compRaw', '合作竞品'])).forEach((t) => addSurface(t.key, t.surface));
+      const sr = txtOf(c, ['skuRaw', 'skuText', '头部竞品品牌体量']);
+      if (!/\d/.test(sr)) tokenBrands(sr).forEach((t) => addSurface(t.key, t.surface));
     });
     TXT_RE = null;
 
@@ -4730,6 +4772,11 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
             客户详情里有<b>关联竞品</b>表：每个品牌标了来源、SKU、价格带，还能对上「头部品牌与竞品格局」里的档案行（竞争关系、OBSBOT 对位型号）。
             两边都能点着走。同义写法会自动归一（PTZ Optics = PTZOptics、Hewlett Packard = HP、罗技 = Logitech），但 AVer（圆展）与 AVerMedia（圆刚）是两家、不合并；
             <b>否定句不算</b>（「不代理 Logitech」不产生关联）。改了字段或备注立刻重算，不用重新构建。</li>
+        <li><b>体量列怎么写都能认</b>：除了标准的「Logitech: 31 SKU」，
+            <b>叙述式</b>（「Logitech 8 款、Rapoo 5 款、ISY 4 款（MediaMarkt 自有品牌）、HP 2 款…」）也照样拆出品牌与款数，
+            括号里的「自有品牌 / 型号举例」不算品牌名，同一个品牌出现两处取<b>最大值</b>（榜单段的「Logitech 3 款」不会和前面的 8 款加成 11）；
+            <b>只写品牌、一个数字都没有</b>（「Logitech、Insta360、Razer」或一行一个）同样会关联，只是 SKU 记「—」、不填 0。
+            这些关联一样进竞品页的「品牌 × 客户关联」与入驻预判，差别只在「有没有量化」。</li>
         <li><b>原表字段也能直接改</b>（客户详情最下面一节）：除<b>客户名</b>（跟进记录与覆盖记录的 id 都是「类型 + 客名」，改名会让历史变孤儿）、<b>优先级 / 综合体量</b>（有专用控件，要重算 P 档）外，每一格都能改，失焦即保存。改动存 <code>customer_overrides.fields</code>，<b>在 build 之前打到行上</b>。所以不是只改显示：改「国家」→ 地区归属、国家下拉、地图分组重算；改「一句话简介」→ 总部经纬度与目标行业重新解析；改竞品体量原文 → SKU 与价格带重新统计；空值仍是空，<b>不写成 0</b>。每格标「人工覆盖」并显示源表原值、改动人、时间，可逐格「恢复原表」或整段「全部恢复原表」，改动同样进「跟进历史」留痕。</li>
         <li>本文件为<b>单文件离线看板</b>，无任何外部依赖，双击即可打开。</li>
       </ul></div></div>

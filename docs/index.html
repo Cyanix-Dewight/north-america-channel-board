@@ -655,7 +655,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-18 19:00<span id="sub-extra"></span></div>
+      <div class="sub">零售商 126 + 代理集成商 680（含新增名单 68 / 612）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-19 11:14<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -1445,21 +1445,41 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
 
      识别规则（宁可少识别，也不误判）：
        · 找「X 代理 / X 总代理 / X 独家代理 / X 区域代理 / X 一级代理 / X 代理商」；
-       · X 取到最近的标点 / 换行 / 括号为界，长度 3–44；
+       · X 取到最近的标点 / 换行 / 括号为界，长度 2–44（两字品牌 PK / LG / 3M 也认）；
        · 去掉开头的「由 / 经 / 为 / 是 / 系 / 交给 / 换成」等连接词与残留引号；
        · X 不能只是「总 / 独家 / 区域 / 增值 / 分销 / 品牌 / 渠道 / 公司…」这类身份描述泛词；
        · X 不能含「这家 / 一家 / 我们 / 该 / 此 / 我方」等指代词；
+       · X 不能含 2B / 2C / B2B / B2C / DTC 这类业务口径词——「按主要 2B 口径归代理侧」是留痕，不是代理方；
+       · X 不能是 IT / AV / OA / MSP / VAR 这类行业与角色缩写（「AV代理」指做 AV 生意，不是叫 AV 的公司）；
        · 识别不到就不显示标签，绝不替用户猜一个代理方。 */
   const AGENT_TAIL = '(?:的)?(?:总代理|独家代理|区域代理|全国代理|省级代理|一级代理|二级代理|三级代理|核心代理|主力代理|授权代理|代理商|代理)';
   const AGENT_SPLIT = "\u3001\uFF0C\u3002\uFF1B;\uFF1A:,\uFF01!\uFF1F?\n\r\uFF08\uFF09()\u3010\u3011\u300A\u300B\u201C\u201D\u2018\u2019\x22\x27{}\u002F\u005C|";
-  const AGENT_GENERIC = /^(?:总|独家|区域|全国|省级|市级|一级|二级|三级|核心|主力|授权|增值|分销|代理|品牌|原厂|官方|渠道|产品|服务|销售|采购|物流|贸易|公司|企业|商|家|号|行|店|我们|我方|他们|她们|这家|那家|一家|本|我|你|他|她|它|是|的|了|在|为|由|和|与|及|或|目前|现在|后续|已经|计划)+[商号行的]?$/;
+  const AGENT_GENERIC = /^(?:总|独家|区域|全国|省级|市级|一级|二级|三级|核心|主力|授权|增值|分销|代理|品牌|原厂|厂家|厂方|官方|渠道|产品|服务|销售|采购|物流|贸易|公司|企业|商|家|号|行|店|我们|我方|他们|她们|这家|那家|一家|本|我|你|他|她|它|是|的|了|在|为|由|和|与|及|或|目前|现在|后续|已经|计划)+[商号行的]?$/;
   const AGENT_DEICTIC = /(这家|那家|一家|该司|此司|本公司|本身|我们|我方|他们|她们|本人|谁在|谁|哪个|哪个公)/;
+  // 业务口径词：备注里常写「按主要 2B 口径归代理侧」，这是重分类留痕，不是代理方
+  const AGENT_BIZMODEL = /(?:^|[^A-Za-z0-9])(?:2B|2C|B2B|B2C|B2B2C|DTC|ToB|ToC)(?:[^A-Za-z0-9]|$)/i;
+  // 行业 / 角色缩写：「AV代理」= 做 AV 业务的代理，不是一家叫 AV 的公司
+  const AGENT_ABBR = /^(?:IT|AV|OA|PC|TV|AR|VR|AI|SI|KA|MSP|VAR|ISV|OEM|ODM|ERP|CRM|POS|SMB|SME|OTT|QSR)$/i;
+  // 重分类留痕 / 判定说明里出现的词，出现即不认
+  const AGENT_TRACE = /口径|留痕|重分类|归类|归属|判定|评分|理由/;
 
   function agentMention(text) {
     const s = String(text == null ? '' : text);
     if (!s || s.indexOf('代理') < 0) return null;
+    // 一个名字能不能当代理方：两字品牌（PK / LG / 3M）要留，口径词与行业缩写要挡
+    const bad = (name) => {
+      if (name.length < 2 || name.length > 44) return true;
+      if (AGENT_GENERIC.test(name)) return true;
+      if (AGENT_DEICTIC.test(name)) return true;
+      if (AGENT_BIZMODEL.test(name)) return true;
+      if (AGENT_ABBR.test(name)) return true;
+      if (AGENT_TRACE.test(name)) return true;
+      // 「分销代理 / 增值分销代理」这类只描述身份的，不算代理方
+      if (/代理|分销$/.test(name) && !/[A-Za-z0-9]/.test(name)) return true;
+      return false;
+    };
     let re;
-    try { re = new RegExp('([^' + AGENT_SPLIT + ']{3,44}?)' + AGENT_TAIL, 'g'); } catch (e) { return null; }
+    try { re = new RegExp('([^' + AGENT_SPLIT + ']{2,44}?)' + AGENT_TAIL, 'g'); } catch (e) { return null; }
     // 「X 代理」式：X 在前。备注里常写成「Staples 由 PK 代理」，所以要按连接词再切一刀，取最后一段
     const SPLIT_ON = /(?:改由|转由|交给|换成|改为|委托|由|经|系|是|为)\s*/;
     let m;
@@ -1470,24 +1490,20 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         .replace(/^[\s\-–—·、,，.。]+/, '')
         .replace(/\s+/g, ' ')
         .trim();
-      if (name.length < 3 || name.length > 44) continue;
-      if (AGENT_GENERIC.test(name)) continue;
-      if (AGENT_DEICTIC.test(name)) continue;
-      // 「分销代理 / 增值分销代理」这类只描述身份的，不算代理方
-      if (/代理|分销$/.test(name) && !/[A-Za-z0-9]/.test(name)) continue;
+      if (bad(name)) continue;
+      // 两字名：ASCII 的（PK / LG / 3M）连写也认；中文两字容易撞泛词，必须按「某某 代理」留个空格
+      if (name.length === 2 && !/\s$/.test(String(m[1])) && !/^[A-Za-z0-9]{2}$/.test(name)) continue;
       const tail = String(m[0]).slice(String(m[1]).length).replace(/^的/, '') || '代理';
       return { name, tail, raw: m[0] };
     }
     // 「代理商是 X / 代理方：X」式：X 在后。必须有 是/为/： 连接，避免把「代理业务占比」误判成公司名
     let re2;
     try {
-      re2 = new RegExp('代理(?:商|方)?\\s*(?:是|为|[:：])\\s*([^' + AGENT_SPLIT + ']{3,44})', 'g');
+      re2 = new RegExp('代理(?:商|方)?\\s*(?:是|为|[:：])\\s*([^' + AGENT_SPLIT + ']{2,44})', 'g');
     } catch (e) { return null; }
     while ((m = re2.exec(s))) {
       const name = String(m[1]).replace(/\s+/g, ' ').replace(/[等了。]+$/, '').trim();
-      if (name.length < 3 || name.length > 44) continue;
-      if (AGENT_GENERIC.test(name)) continue;
-      if (AGENT_DEICTIC.test(name)) continue;
+      if (bad(name)) continue;
       return { name, tail: '代理', raw: m[0] };
     }
     return null;
@@ -4061,9 +4077,10 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
         <li>表头带 ⇅ 的列可排序；缺失值永远排在最后。</li>
         <li>每页右上角可导出 CSV（含优先级来源与模型建议，便于复核）。</li>
         <li>「开发跟进」页的填写内容<b>不进 Excel</b>：先存本机浏览器，用共享版网址打开时按字段同步到云端，多人同时改不同列不会互相覆盖；改动后表格不会跳回顶部。</li>
-        <li><b>备注里写「X 代理」会自动挂代理商标</b>：在跟进备注（或原表 / 录入备注）里写「PK Distrubution 代理」「由 Ingram Micro 区域代理」「代理商是 TechData」这类句子，
-            行业标签后面就多出一枚「PK Distrubution 代理」标签，P 码总表、开发跟进表、客户主表、抽屉头部都显示；悬停给出命中的备注原句，方便核对。
-            识别不到就不显示——「我们是代理商」「增值分销代理商」「代理业务占比 60%」这类只描述身份的写法<b>不会</b>被误当成代理方。</li>
+        <li><b>备注里写「某某 代理」（中间一个空格）会自动挂代理商标</b>：在跟进备注（或原表 / 录入备注）里写「PK 代理」「由 Ingram Micro 区域代理」「代理方：TechData」这类句子，
+            行业标签后面就多出一枚「PK 代理」标签，P 码总表、开发跟进表、客户主表、抽屉头部都显示；悬停给出命中的备注原句，方便核对。
+            两字品牌照样认（PC / LG / 3M 这类连写也认），但「我们是代理商」「增值分销代理商」「代理业务占比 60%」这类只描述身份的写法，以及
+            「2B 代理」「B2B 代理」「IT 代理」「AV 代理」这类业务口径与行业缩写<b>不会</b>被误当成代理方；重分类留痕里的「按主要 2B 口径归代理侧」也不会。</li>
         <li><b>优先级与综合体量可在看板里直接改</b>：P 码总表 / 客户主表里点下拉与输入框即可，客户详情里也有同一组控件。改动存云端覆盖表，所有人 6 秒内看到，KPI、分档、图表、筛选同步重算；<b>源表原值保留可对照</b>，清空该格即撤销覆盖、回到源表值。体量填<b>原文</b>，按同一套汇率自动折美元并重新分档；原文里没有金额就如实变成「未量化」，不编数字。被人工改过的行会带一个「改」标记。</li>
         <li><b>原表字段也能直接改</b>（客户详情最下面一节）：除<b>客户名</b>（跟进记录与覆盖记录的 id 都是「类型 + 客名」，改名会让历史变孤儿）、<b>优先级 / 综合体量</b>（有专用控件，要重算 P 档）外，每一格都能改，失焦即保存。改动存 <code>customer_overrides.fields</code>，<b>在 build 之前打到行上</b>。所以不是只改显示：改「国家」→ 地区归属、国家下拉、地图分组重算；改「一句话简介」→ 总部经纬度与目标行业重新解析；改竞品体量原文 → SKU 与价格带重新统计；空值仍是空，<b>不写成 0</b>。每格标「人工覆盖」并显示源表原值、改动人、时间，可逐格「恢复原表」或整段「全部恢复原表」，改动同样进「跟进历史」留痕。</li>
         <li>本文件为<b>单文件离线看板</b>，无任何外部依赖，双击即可打开。</li>

@@ -692,7 +692,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 116 + 代理集成商 690（含新增名单 58 / 622）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-19 18:39<span id="sub-extra"></span></div>
+      <div class="sub">零售商 116 + 代理集成商 690（含新增名单 58 / 622）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-20 09:59<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -1646,7 +1646,17 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const sm = c.sku;
     const out = { items: [], gaps: [], headline: '', level: '低', basis: [] };
     if (!sm.brandCount) {
-      out.headline = '原表未记录竞品 SKU / 价格带，暂不做型号预判';
+      /* 分两种「没数据」，别混成一句：
+         · 体量列写了品牌、没写款数（「Logitech、Insta360」）→ 品牌是知道的，缺的是款数与价格带；
+         · 体量列空着 / 只有「/」→ 确实什么都没记。 */
+      const raw = String(c.skuRaw == null ? '' : c.skuRaw).trim();
+      if (raw) {
+        out.headline = '竞品只记了品牌、没记款数，算不出 SKU 深度与价格带，暂不做型号预判';
+        out.basis.push('体量列原文：' + (raw.length > 60 ? raw.slice(0, 60) + '…' : raw));
+        out.basis.push('按「品牌：N SKU（$低-$高）」补上款数与价格带，即可自动生成预判；品牌关联已生效，无需重复填写');
+      } else {
+        out.headline = '原表未记录竞品 SKU / 价格带，暂不做型号预判';
+      }
       out.level = '未知';
       return out;
     }
@@ -2136,10 +2146,20 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     c.judge = null;
     c.pModel = null;
     c.pConflict = false;
-    c.advice = {
-      items: [], gaps: [], basis: [], level: '未知',
-      headline: '名单阶段：体量 / 竞品 / 产品线均未调研，暂不做型号预判',
-    };
+    /* 名单阶段 ≠ 什么都没填：手工录入 / 批量导入的客户常常已经写体量、写竞品品牌了
+       （BCC 就是体量列写了「Logitech、Insta360」但没有款数）。一句「均未调研」会让人
+       以为数据丢了，所以按实际填到的字段说话。 */
+    const brandRaw = String((c.skuRaw || c.brandText || '') || '').trim();
+    const hasSku = !!(c.sku && c.sku.brandCount);
+    let head = '名单阶段：体量 / 竞品 / 产品线均未调研，暂不做型号预判';
+    const basis = [];
+    if (hasSku) {
+      head = '名单阶段：已有竞品 SKU 记录，其余维度仍待调研，暂不做型号预判';
+    } else if (brandRaw) {
+      head = '名单阶段：已认出竞品品牌、但没写款数，补齐款数与价格带再做型号预判';
+      basis.push('竞品原文：' + (brandRaw.length > 60 ? brandRaw.slice(0, 60) + '…' : brandRaw));
+    }
+    c.advice = { items: [], gaps: [], basis: basis, level: '未知', headline: head };
     c.action = '名单阶段 · 先补官网与产品线调研';
     return c;
   }
@@ -2966,7 +2986,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   // 注意：attachHQ() 需在 APP.build() 之后调用，由 boot 脚本触发
 })();
 </script>
-<script>window.CLASSIFY_RULES = {"retailId":"brick-and-mortar retailer|retail giant|retail brand|retail chain|retail store|retail group|retailer|零售和电商|零售与电商|零售经销商|线上零售|零售电商|连锁零售|零售企业|零售卖场|零售集团|零售品牌|网络零售|零售门店|零售巨头|零售连锁|零售平台|零售商|零售店","store":"direct-to-consumer|amazon store|online store|online shop|marketplace|e-commerce|web store|ecommerce|webshop|shopify|线上销售|在线商城|线上商店|网上销售|网上商店|电子商务|在线商店|to C|直播带货|线上商城|线上售卖|网络销售|在线销售|目录销售|网上商城|会员店|相机店|乐器店|B2C|DTC|影音店|专卖店|体验店|大卖场|实体店|零售点|专业店|旗舰店|连锁店|集合店|toC|门店|商城|百货|分店|店铺|邮购|超市|网店|卖场|2C|商超|电商","channel":"service provider|system design|consultancy|distributor|integrator|consultant|wholesaler|installer|reseller|解决方案提供商|技术系统设计|信息技术服务|dealer|IT 服务|集成方案商|授权服务商|解决方案商|系统集成商|AV 设计|音视频设计|系统集成|工程咨询|IT服务|技术支持|维修中心|工程公司|授权维修|系统运维|售后服务|网页设计|托管服务|现场活动|设计公司|整体方案|技术服务|软件服务|声学设计|活动技术|活动制作|网站设计|软件开发|维修服务|贸易商|集成商|代理商|批发商|分销商|工程商|VAR|供货商|服务商|渠道商|租赁商|安装商|销售商|方案商|进口商|MSP|总代理|转售商|维修商|经销商|承包商|代理|集成|制片|安装|会展|分销|租赁|咨询|舞美|经销|维修|总代|顾问","project":"system design|consultancy|integrator|consultant|解决方案提供商|技术系统设计|集成方案商|解决方案商|系统集成商|AV 设计|音视频设计|系统集成|工程咨询|工程公司|系统运维|现场活动|托管服务|设计公司|整体方案|声学设计|活动技术|活动制作|集成商|VAR|工程商|方案商|MSP|咨询|舞美|顾问","enduser":"终端用户|终端客户|终端教育|终端医疗|终端演播室|终端使用方|大学|学院|学区|中学|高中|小学|学校|校区|球队|巡回赛|体育联盟|职业球|医院|医疗系统|医疗中心|医学院|诊所|市政府|市政|政府机构|公共机构|政府部门|教会|教堂|事工|教区|宗教|电视台|电台|广播网|广播机构|广播公司|广播电视|媒体集团|传媒集团|传媒|出版|杂志|媒体网络|媒体公司|新闻|测评|评测|导购|blog|博客|自媒体|工作室|制作公司|内容制作|影视制作|软件|平台|SaaS|广告科技|协会|信托|基金会|非营利|公益|博物馆|剧院|乐团|文化场馆|制造商|厂商|代工","weak":"零售|retail|售卖|销售|卖货"};</script>
+<script>window.CLASSIFY_RULES = {"retailId":"brick-and-mortar retailer|retail giant|retail brand|retail group|retail chain|retail store|retailer|零售与电商|零售经销商|零售和电商|零售连锁|零售品牌|线上零售|零售平台|零售巨头|零售企业|连锁零售|零售电商|网络零售|零售卖场|零售集团|零售门店|零售商|零售店","store":"direct-to-consumer|online store|amazon store|online shop|marketplace|e-commerce|ecommerce|web store|shopify|webshop|网上销售|目录销售|在线商店|网上商城|线上售卖|线上商店|电子商务|网上商店|线上销售|在线销售|在线商城|直播带货|线上商城|to C|网络销售|旗舰店|影音店|实体店|DTC|连锁店|大卖场|零售点|体验店|B2C|专卖店|会员店|toC|乐器店|集合店|专业店|相机店|网店|2C|邮购|百货|商城|超市|店铺|商超|卖场|电商|门店|分店","channel":"service provider|system design|consultancy|distributor|consultant|integrator|wholesaler|installer|reseller|解决方案提供商|技术系统设计|dealer|信息技术服务|授权服务商|AV 设计|IT 服务|集成方案商|音视频设计|系统集成商|解决方案商|技术支持|维修中心|IT服务|网页设计|软件开发|现场活动|授权维修|活动技术|软件服务|声学设计|网站设计|系统运维|设计公司|维修服务|系统集成|技术服务|工程咨询|工程公司|托管服务|售后服务|活动制作|整体方案|工程商|渠道商|分销商|供货商|集成商|转售商|维修商|销售商|进口商|经销商|VAR|服务商|安装商|承包商|批发商|总代理|代理商|贸易商|租赁商|MSP|方案商|总代|顾问|制片|会展|经销|分销|咨询|租赁|集成|代理|安装|维修|舞美","project":"system design|consultancy|consultant|integrator|解决方案提供商|技术系统设计|AV 设计|集成方案商|音视频设计|系统集成商|解决方案商|现场活动|活动技术|声学设计|系统运维|设计公司|系统集成|工程咨询|工程公司|托管服务|活动制作|整体方案|工程商|集成商|VAR|MSP|方案商|顾问|咨询|舞美","enduser":"终端用户|终端客户|终端教育|终端医疗|终端演播室|终端使用方|大学|学院|学区|中学|高中|小学|学校|校区|球队|巡回赛|体育联盟|职业球|医院|医疗系统|医疗中心|医学院|诊所|市政府|市政|政府机构|公共机构|政府部门|教会|教堂|事工|教区|宗教|电视台|电台|广播网|广播机构|广播公司|广播电视|媒体集团|传媒集团|传媒|出版|杂志|媒体网络|媒体公司|新闻|测评|评测|导购|blog|博客|自媒体|工作室|制作公司|内容制作|影视制作|软件|平台|SaaS|广告科技|协会|信托|基金会|非营利|公益|博物馆|剧院|乐团|文化场馆|制造商|厂商|代工","weak":"零售|retail|售卖|销售|卖货"};</script>
 <script>window.__SITE__ = [{"n":"EC Pro Video Systems Inc","v":"service","s":4,"g":["电商平台","加购/结账","标价","商品导航","项目/服务话术"],"u":"https://ecprostore.com"},{"n":"vip production nw","v":"service","s":1,"g":["加购/结账","商品导航","项目/服务话术"],"u":"https://www.vipproductionnw.com"},{"n":"Camera Corner Connecting Point","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://www.cccp.com"},{"n":"Ziestech Distributors","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://www.ziestech.com"},{"n":"Lorne Lapham Sales & Rentals","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://llsr.com"},{"n":"BJ Photo Labs","v":"retail","s":3,"g":["加购/结账","标价","商品导航"],"u":"https://www.bjphoto.net"},{"n":"Logesco","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://logesco.com"},{"n":"MelroseMAC","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://melrosemac.com"},{"n":"Resolution AV NYC","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://resolutionavnyc.com"},{"n":"The Penn Group","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://thepenn.group"},{"n":"Midwest Audio Visual","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://midwestaudiovisual.com"},{"n":"East West Associates LLC","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://www.eastwestassociatesllc.com"},{"n":"CCI Solutions","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://ccisolutions.com"},{"n":"Agility AV","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://www.agilityavl.com"},{"n":"VideoLink","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://videolink.com"},{"n":"MeyerPro","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://meyerproinc.com"},{"n":"SC Media Canada","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://www.scmediacanada.com"},{"n":"Professional commercial AV solutions service","v":"service","s":-1,"g":["项目/服务话术"],"u":"https://www.esikc.com"},{"n":"Soundbox Productions","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://soundboxpro.com"},{"n":"TelQuest International","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://www.telquestintl.com"},{"n":"epic rise electronics","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://epicriseelectronics.com"}];</script>
 <script>/* ============================================================
    classify.js — 客户身份判定（前端）
@@ -4764,7 +4784,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           <li>空值一律保留为空，页面显示「待核实 / 未量化 / —」三态，<b>不填 0、不推测</b>。</li>
           <li>优先级统一为 <b>P1 / P2 / P3</b>。${IS_R ? `零售商 P 码取自原表标注（${n} 家全部已标）。` : `代理集成商 P 码取自原表标注（${n} 家全部已标），模型按三因子复算一遍用于校准，界面标出与原表不一致者，<b>原表标注永远优先</b>。`}</li>
           <li>综合体量：解析原表金额文本 → 统一折美元 → 分 A–E 五档；原币按下面的汇率折算，若原文已自带给美元换算且与该汇率相差不到 20%，直接采用原文。</li>
-          <li>竞品 SKU：从「${IS_R ? '头部竞品品牌体量' : '合作竞品'}」列解析出「品牌 × SKU 数 × 价格带」，用于 ${IS_R ? 'OBSBOT 产品入驻预判' : '产品线匹配判断'}。</li>
+          <li>竞品 SKU：从「${IS_R ? '头部竞品品牌体量' : '合作竞品'}」列解析出「品牌 × SKU 数 × 价格带」，用于 ${IS_R ? 'OBSBOT 产品入驻预判' : '产品线匹配判断'}。
+            ${IS_R ? '竞品信息分三档，<b>不混为一谈</b>：有款数 → 进 SKU 矩阵与入驻预判；只写了品牌名（或只在简介/备注里提到品牌）→ 进「有品牌、缺款数」，品牌关联照常生效、款数记「—」；<b>一点线索都没有</b>才进「竞品数据缺失」。' : ''}</li>
         <li><b>目标行业</b>：由 <code>classify_industry.py</code> 从「一句话简介」判定客户<b>主要服务的行业</b>（教育 / 摄影·影像 / 影视·广电 / 政府·公共 / 医疗 / 会议协作 / 现场活动 / 体育电竞 / 宗教 / 住宅智能家居 / 安防监控 / 企业办公 / 零售电商），
           只看它「卖给谁」、不看它「怎么卖」；同时命中 3 个以上行业（如「服务政府、教育与医疗机构」）判「综合·多行业」，简介无任何线索则「未标注」，<b>不硬猜</b>。判错的登记在 <code>data/industry_override.json</code>。</li>
         </ul>`, '', '')}
@@ -5921,7 +5942,14 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const obsShelf = list.filter((c) => c.sku.obs && c.sku.obs.sku > 0);
     const insta = list.filter((c) => c.sku.instaSku > 0);
     const hiOpp = list.filter((c) => c.advice.level === '高');
-    const noData = list.filter((c) => !c.sku.brandCount);
+    /* 竞品信息分三档，别把「有品牌、缺款数」的混进「缺失」：
+       · 有结构化 SKU（brandCount > 0）→ 进矩阵与预判；
+       · 只写了品牌名、没写款数（体量列「Logitech、Insta360」或备注里提到品牌）→ 有线索但不可量化，
+         单独列一档，说明补什么就能进预判，不能叫「缺失」；
+       · 一点线索都没有 → 才是真缺失。 */
+    const brandOf = (c) => (W.COMP && W.COMP.of ? W.COMP.of(c) : []);
+    const brandOnly = list.filter((c) => !c.sku.brandCount && brandOf(c).length > 0);
+    const noData = list.filter((c) => !c.sku.brandCount && brandOf(c).length === 0);
 
     const bs = brandStats(withData);
     const topBrands = bs.slice(0, 11);
@@ -6001,9 +6029,25 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           <tbody>${oppRows}</tbody></table></div>
       </div></div>
 
-    ${noData.length ? `<div class="card"><div class="card-h"><h3>竞品数据缺失</h3><span class="hint">原表「头部竞品品牌体量」列只写了「/」，未做预判</span></div>
+    ${brandOnly.length ? `<div class="card" style="margin-bottom:14px"><div class="card-h"><h3>有品牌、缺款数</h3>
+        <span class="hint">已认出竞品品牌（体量列 / 简介 / 备注），但没有「N 款」，算不出 SKU 深度与价格带</span>
+        <div class="right"><span class="chip plain">${brandOnly.length} 家</span></div></div>
+      <div class="card-b">
+        <div class="tablewrap" style="max-height:300px"><table class="dt">
+          <thead><tr><th>客户</th><th>P</th><th>已认出的竞品品牌</th><th>补什么</th></tr></thead>
+          <tbody>${brandOnly.map((c) => {
+            const bs = brandOf(c).slice().sort((x, y) => (y.sku || 0) - (x.sku || 0));
+            const txt = bs.map((b) => esc(b.name) + (b.sku ? `<i style="color:#667085"> ${b.sku} 款</i>` : '')).join('、');
+            return `<tr><td><b data-id="${c.id}" style="cursor:pointer">${esc(c.name)}</b></td><td>${esc(c.p || '—')}</td>
+              <td style="font-size:11px">${txt}</td>
+              <td class="mini muted">把体量列写成「品牌：N SKU（\$低-\$高）」</td></tr>`;
+          }).join('')}</tbody></table></div>
+        <div class="note" style="margin-top:8px">这 ${brandOnly.length} 家<b>不是没竞品</b>，只是没量化：品牌已在「品牌 × 客户关联」与客户详情里生效，
+          补上款数与价格带后即可进入上面的 SKU 矩阵与入驻预判。没有款数的品牌一律记「—」，<b>不填 0</b>。</div></div></div>` : ''}
+
+    ${noData.length ? `<div class="card"><div class="card-h"><h3>竞品数据缺失</h3><span class="hint">体量列空着、或只写了「/」「—」，简介与备注里也没提到任何竞品品牌</span></div>
       <div class="card-b"><div style="display:flex;flex-wrap:wrap;gap:5px">${noData.map((c) => `<span class="chip plain" data-id="${c.id}" style="cursor:pointer">${esc(c.name)}</span>`).join('')}</div>
-      <div class="note" style="margin-top:8px">这 ${noData.length} 家补上「品牌：N SKU（\$低-\$高）」格式后，重跑构建即可自动生成预判。</div></div></div>` : ''}
+      <div class="note" style="margin-top:8px">这 ${noData.length} 家补上「品牌：N SKU（\$低-\$高）」格式后，重跑构建即可自动生成预判；只写品牌名也会进「有品牌、缺款数」那一档。</div></div></div>` : ''}
     `;
   }
   const kpi2 = UI.kpi;

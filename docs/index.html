@@ -116,6 +116,27 @@ select:focus,input:focus{border-color:var(--brand-2);box-shadow:0 0 0 3px rgba(5
 .search{position:relative;min-width:220px;flex:1 1 220px;max-width:340px}
 .search input{width:100%;padding-left:29px}
 .search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);opacity:.45}
+
+/* 全库搜索结果面板（零售 + 代理）：定位在搜索框下方，不挤动筛选栏布局 */
+.qres{position:absolute;left:0;top:calc(100% + 6px);z-index:60;width:430px;max-width:88vw;
+  background:#fff;border:1px solid var(--line);border-radius:10px;
+  box-shadow:0 12px 28px rgba(16,24,40,.14);overflow:hidden}
+.qres:empty{display:none}
+.qres-h{padding:8px 10px;border-bottom:1px solid #F2F4F7;background:#FCFCFD;
+  font-size:11px;color:var(--ink-3);line-height:1.5}
+.qres-h b{color:var(--ink);font-weight:700}
+.qres-body{max-height:352px;overflow:auto}
+.qrow{display:flex;align-items:center;gap:7px;width:100%;padding:7px 10px;border:0;background:none;
+  text-align:left;cursor:pointer;font-family:inherit;font-size:12px;color:var(--ink);border-bottom:1px solid #FAFBFC}
+.qrow:hover,.qrow:focus{background:#F5F8FF;outline:none}
+.qrow .qn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.qrow .qs{font-size:9px;font-weight:700;letter-spacing:.04em;padding:1px 5px;border-radius:4px;white-space:nowrap}
+.qrow .qs.r{background:#EFF4FF;color:#1D4ED8}
+.qrow .qs.a{background:#F0FDF4;color:#067647}
+.qrow .qp{font-size:10px;font-weight:700;color:var(--ink-3)}
+.qrow .qc{font-size:10px;color:var(--ink-3);min-width:28px;text-align:right}
+.qrow .qgo{font-size:10px;color:var(--brand-2);white-space:nowrap}
+.qres-f{padding:6px 10px;border-top:1px solid #F2F4F7;background:#FCFCFD;font-size:10px;color:var(--ink-3)}
 .filterbar .sep{width:1px;height:20px;background:var(--line)}
 .btn{
   appearance:none;cursor:pointer;border:1px solid var(--line);background:#fff;
@@ -692,7 +713,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 116 + 代理集成商 690（含新增名单 58 / 622）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-20 09:59<span id="sub-extra"></span></div>
+      <div class="sub">零售商 116 + 代理集成商 690（含新增名单 58 / 622）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-20 15:21<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -719,7 +740,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   <div class="filterbar" id="filterbar">
     <div class="search">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="#667085" stroke-width="1.6"><circle cx="7" cy="7" r="4.6"/><path d="M10.6 10.6L14 14"/></svg>
-      <input type="text" id="f-q" placeholder="搜索客户 / 简介 / 覆盖范围 / 竞品">
+      <input type="text" id="f-q" autocomplete="off" spellcheck="false" placeholder="搜索客户名（零售商 + 代理集成商都查）">
+      <div class="qres" id="f-qres"></div>
     </div>
     <span class="sep"></span>
     <span class="lbl">地区</span>
@@ -2986,7 +3008,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   // 注意：attachHQ() 需在 APP.build() 之后调用，由 boot 脚本触发
 })();
 </script>
-<script>window.CLASSIFY_RULES = {"retailId":"brick-and-mortar retailer|retail giant|retail brand|retail group|retail chain|retail store|retailer|零售与电商|零售经销商|零售和电商|零售连锁|零售品牌|线上零售|零售平台|零售巨头|零售企业|连锁零售|零售电商|网络零售|零售卖场|零售集团|零售门店|零售商|零售店","store":"direct-to-consumer|online store|amazon store|online shop|marketplace|e-commerce|ecommerce|web store|shopify|webshop|网上销售|目录销售|在线商店|网上商城|线上售卖|线上商店|电子商务|网上商店|线上销售|在线销售|在线商城|直播带货|线上商城|to C|网络销售|旗舰店|影音店|实体店|DTC|连锁店|大卖场|零售点|体验店|B2C|专卖店|会员店|toC|乐器店|集合店|专业店|相机店|网店|2C|邮购|百货|商城|超市|店铺|商超|卖场|电商|门店|分店","channel":"service provider|system design|consultancy|distributor|consultant|integrator|wholesaler|installer|reseller|解决方案提供商|技术系统设计|dealer|信息技术服务|授权服务商|AV 设计|IT 服务|集成方案商|音视频设计|系统集成商|解决方案商|技术支持|维修中心|IT服务|网页设计|软件开发|现场活动|授权维修|活动技术|软件服务|声学设计|网站设计|系统运维|设计公司|维修服务|系统集成|技术服务|工程咨询|工程公司|托管服务|售后服务|活动制作|整体方案|工程商|渠道商|分销商|供货商|集成商|转售商|维修商|销售商|进口商|经销商|VAR|服务商|安装商|承包商|批发商|总代理|代理商|贸易商|租赁商|MSP|方案商|总代|顾问|制片|会展|经销|分销|咨询|租赁|集成|代理|安装|维修|舞美","project":"system design|consultancy|consultant|integrator|解决方案提供商|技术系统设计|AV 设计|集成方案商|音视频设计|系统集成商|解决方案商|现场活动|活动技术|声学设计|系统运维|设计公司|系统集成|工程咨询|工程公司|托管服务|活动制作|整体方案|工程商|集成商|VAR|MSP|方案商|顾问|咨询|舞美","enduser":"终端用户|终端客户|终端教育|终端医疗|终端演播室|终端使用方|大学|学院|学区|中学|高中|小学|学校|校区|球队|巡回赛|体育联盟|职业球|医院|医疗系统|医疗中心|医学院|诊所|市政府|市政|政府机构|公共机构|政府部门|教会|教堂|事工|教区|宗教|电视台|电台|广播网|广播机构|广播公司|广播电视|媒体集团|传媒集团|传媒|出版|杂志|媒体网络|媒体公司|新闻|测评|评测|导购|blog|博客|自媒体|工作室|制作公司|内容制作|影视制作|软件|平台|SaaS|广告科技|协会|信托|基金会|非营利|公益|博物馆|剧院|乐团|文化场馆|制造商|厂商|代工","weak":"零售|retail|售卖|销售|卖货"};</script>
+<script>window.CLASSIFY_RULES = {"retailId":"brick-and-mortar retailer|retail brand|retail group|retail giant|retail store|retail chain|retailer|零售与电商|零售经销商|零售和电商|零售品牌|零售企业|零售连锁|零售集团|线上零售|零售门店|网络零售|连锁零售|零售平台|零售电商|零售巨头|零售卖场|零售店|零售商","store":"direct-to-consumer|amazon store|online store|marketplace|online shop|e-commerce|ecommerce|web store|webshop|shopify|网上商店|在线商店|目录销售|网上销售|在线商城|网络销售|网上商城|线上售卖|to C|在线销售|电子商务|线上商城|直播带货|线上销售|线上商店|体验店|toC|相机店|旗舰店|B2C|乐器店|影音店|大卖场|DTC|专卖店|会员店|实体店|集合店|零售点|连锁店|专业店|卖场|超市|店铺|电商|邮购|百货|网店|门店|2C|分店|商城|商超","channel":"service provider|system design|distributor|consultancy|wholesaler|integrator|consultant|installer|reseller|解决方案提供商|信息技术服务|技术系统设计|dealer|AV 设计|解决方案商|音视频设计|集成方案商|授权服务商|系统集成商|IT 服务|工程咨询|设计公司|网站设计|托管服务|活动制作|工程公司|网页设计|软件服务|现场活动|整体方案|声学设计|维修服务|售后服务|活动技术|IT服务|维修中心|系统运维|授权维修|技术支持|系统集成|技术服务|软件开发|租赁商|总代理|方案商|代理商|渠道商|承包商|转售商|集成商|维修商|经销商|工程商|分销商|贸易商|安装商|MSP|批发商|销售商|VAR|服务商|供货商|进口商|集成|代理|顾问|分销|舞美|经销|安装|会展|维修|制片|总代|租赁|咨询","project":"system design|consultancy|integrator|consultant|解决方案提供商|技术系统设计|AV 设计|解决方案商|音视频设计|集成方案商|系统集成商|工程咨询|设计公司|托管服务|活动制作|工程公司|现场活动|声学设计|整体方案|活动技术|系统运维|系统集成|方案商|集成商|工程商|MSP|VAR|顾问|舞美|咨询","enduser":"终端用户|终端客户|终端教育|终端医疗|终端演播室|终端使用方|大学|学院|学区|中学|高中|小学|学校|校区|球队|巡回赛|体育联盟|职业球|医院|医疗系统|医疗中心|医学院|诊所|市政府|市政|政府机构|公共机构|政府部门|教会|教堂|事工|教区|宗教|电视台|电台|广播网|广播机构|广播公司|广播电视|媒体集团|传媒集团|传媒|出版|杂志|媒体网络|媒体公司|新闻|测评|评测|导购|blog|博客|自媒体|工作室|制作公司|内容制作|影视制作|软件|平台|SaaS|广告科技|协会|信托|基金会|非营利|公益|博物馆|剧院|乐团|文化场馆|制造商|厂商|代工","weak":"零售|retail|售卖|销售|卖货"};</script>
 <script>window.__SITE__ = [{"n":"EC Pro Video Systems Inc","v":"service","s":4,"g":["电商平台","加购/结账","标价","商品导航","项目/服务话术"],"u":"https://ecprostore.com"},{"n":"vip production nw","v":"service","s":1,"g":["加购/结账","商品导航","项目/服务话术"],"u":"https://www.vipproductionnw.com"},{"n":"Camera Corner Connecting Point","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://www.cccp.com"},{"n":"Ziestech Distributors","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://www.ziestech.com"},{"n":"Lorne Lapham Sales & Rentals","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://llsr.com"},{"n":"BJ Photo Labs","v":"retail","s":3,"g":["加购/结账","标价","商品导航"],"u":"https://www.bjphoto.net"},{"n":"Logesco","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://logesco.com"},{"n":"MelroseMAC","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://melrosemac.com"},{"n":"Resolution AV NYC","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://resolutionavnyc.com"},{"n":"The Penn Group","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://thepenn.group"},{"n":"Midwest Audio Visual","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://midwestaudiovisual.com"},{"n":"East West Associates LLC","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://www.eastwestassociatesllc.com"},{"n":"CCI Solutions","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://ccisolutions.com"},{"n":"Agility AV","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://www.agilityavl.com"},{"n":"VideoLink","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://videolink.com"},{"n":"MeyerPro","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://meyerproinc.com"},{"n":"SC Media Canada","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://www.scmediacanada.com"},{"n":"Professional commercial AV solutions service","v":"service","s":-1,"g":["项目/服务话术"],"u":"https://www.esikc.com"},{"n":"Soundbox Productions","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://soundboxpro.com"},{"n":"TelQuest International","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://www.telquestintl.com"},{"n":"epic rise electronics","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://epicriseelectronics.com"}];</script>
 <script>/* ============================================================
    classify.js — 客户身份判定（前端）
@@ -3660,6 +3682,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     sort: { key: 'p', dir: 'asc' },
     scaleTop: 20,
     compBrand: 'ALL',
+    pendingOpen: '',      // 跨类型搜索跳转时待打开的客户 id
   };
 
   /* ---------- 小工具 ---------- */
@@ -4817,6 +4840,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="card" style="margin-top:14px"><div class="card-h"><h3>七、页面与交互</h3></div>
       <div class="card-b"><ul class="rulelist">
         <li>顶部筛选栏的「地区 / 国家 / 行业 / 优先级 / 合作 / 建联 / 搜索」对<b>所有页面同时生效</b>，切换 tab 不会重置。</li>
+        <li><b>搜索框是全库搜索，不只看当前这张表</b>：输入客户名（或国家、竞品品牌）时，下拉面板同时列出<b>零售商 + 代理集成商</b>两侧的命中，每行标了类型、P 码与国家。
+          点本侧的结果直接开客户详情；点另一侧的会切到那一侧并自动打开详情（地址栏带 <code>open=客户id</code>，链接可直接分享）。多关键词用空格分隔（如 <code>Staples 加拿大</code>，要求每个词都命中）。</li>
         <li>表格任意行可点击 → 右侧抽屉展开：原始字段、体量解析证据、竞品 SKU、产品建议、价格带图。</li>
         <li>表头带 ⇅ 的列可排序；缺失值永远排在最后。</li>
         <li>每页右上角可导出 CSV（含优先级来源与模型建议，便于复核）。</li>
@@ -5127,6 +5152,84 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     if (W.BIND_EXTRA) W.BIND_EXTRA(box, render);
   }
 
+  /* ---------- 全库搜索（零售 + 代理集成商） ----------
+     输入框的输入仍然会筛选当前这张表，但结果面板跨两侧：
+     零售商页里搜「Ingram Micro」也能看到代理侧的命中。
+     点同一侧 → 直接开抽屉；点另一侧 → 写 hash 切过去、刷新后自动开抽屉
+     （两侧是两套口径，抽屉内容按类型不同，混在一个页面里渲染会串味）。 */
+  const QMAX = 8;
+  const Q_FIELDS = ['intro', 'coverage', 'region', 'ind', 'cats', 'url', 'skuRaw', 'brandText', 'note'];
+
+  function qHay(c) {
+    const parts = [c.name].concat(Q_FIELDS.map((k) => c[k]));
+    return parts.map((x) => String(x == null ? '' : x).toLowerCase()).join(' ');
+  }
+  function qHits(raw) {
+    const full = String(raw == null ? '' : raw).trim().toLowerCase();
+    if (!full) return [];
+    const toks = full.split(/\s+/).filter(Boolean);
+    const out = [];
+    APP.customers.forEach((c) => {
+      const hay = qHay(c);
+      if (!toks.every((t) => hay.indexOf(t) >= 0)) return;
+      const n = String(c.name || '').toLowerCase();
+      let sc = 50;
+      if (n === full) sc = 100;
+      else if (n.indexOf(full) === 0) sc = 90;
+      else if (n.indexOf(full) >= 0) sc = 80;
+      out.push({ c: c, s: sc });
+    });
+    out.sort((a, b) => b.s - a.s
+      || (a.c.type === (IS_R ? 'retailer' : 'agent') ? -1 : 1) - (b.c.type === (IS_R ? 'retailer' : 'agent') ? -1 : 1)
+      || (a.c.name > b.c.name ? 1 : a.c.name < b.c.name ? -1 : 0));
+    return out;
+  }
+  function sideWord(t) { return t === 'retailer' ? '零售' : '代理'; }          // 标签用（短）
+  function sideFull(t) { return t === 'retailer' ? '零售商' : '代理'; }        // 提示语用（完整）
+
+  function qresHTML(q, hits) {
+    const head = `<div class="qres-h">全库搜索「${esc(q)}」· 命中 <b>${hits.length}</b> 家（零售商 + 代理集成商）${
+      hits.length > QMAX ? ` · 只列前 ${QMAX}` : ''}</div>`;
+    if (!hits.length) {
+      return `${head}<div class="qres-f">两侧都没有匹配。可试客户名的一段、国家或竞品品牌。</div>`;
+    }
+    const rows = hits.slice(0, QMAX).map((h) => {
+      const c = h.c;
+      const here = c.type === (IS_R ? 'retailer' : 'agent');
+      return `<button class="qrow" data-qid="${esc(c.id)}">
+        <span class="qn">${esc(c.name)}</span>
+        <span class="qs ${c.type === 'retailer' ? 'r' : 'a'}">${sideWord(c.type)}</span>
+        <span class="qp">${esc(c.p || '—')}</span>
+        <span class="qc">${esc(countryLabel(c))}</span>
+        ${here ? '' : `<span class="qgo">切到${sideFull(c.type)}侧 ›</span>`}
+      </button>`;
+    }).join('');
+    return `${head}<div class="qres-body">${rows}</div>
+      <div class="qres-f">输入框同时筛选当前这张表；点另一侧的结果会切过去并打开客户详情</div>`;
+  }
+
+  function hideQres() {
+    const b = el('f-qres');
+    if (b) b.textContent = '';
+  }
+  function paintQres() {
+    const box = el('f-qres');
+    const inp = el('f-q');
+    if (!box || !inp) return;
+    const q = String(inp.value || '').trim();
+    if (!q) { box.textContent = ''; return; }
+    box.innerHTML = qresHTML(q, qHits(q));
+  }
+
+  /* 点结果：同侧开抽屉；另一侧切 hash + 刷新（带 open=，回来直接开详情） */
+  function goCustomer(c) {
+    if (!c) return;
+    hideQres();
+    if (c.type === (IS_R ? 'retailer' : 'agent')) { openDrawer(c.id); return; }
+    location.hash = '#t=' + c.type + '&v=' + state.view + '&open=' + encodeURIComponent(c.id);
+    location.reload();
+  }
+
   function initViewFromHash() {
     const h = (location.hash || '').replace(/^#/, '');
     if (!h) return;
@@ -5135,6 +5238,8 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     // 兼容两种格式：#map（旧）与 #t=agent&v=map（总看板带类型）
     const v = kv.v || (h.indexOf('=') < 0 ? h : '');
     if (v && el('view-' + v)) state.view = v;
+    /* 跨类型搜索结果点过来时带 open=<客户id>，渲染完直接把这家客户的详情打开 */
+    if (kv.open) state.pendingOpen = decodeURIComponent(kv.open);
   }
 
   function init() {
@@ -5172,20 +5277,51 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     bindSel('f-contact', 'contact');
     bindSel('f-level', 'level');
     bindSel('f-region', 'region');
+    /* 顶部搜索框：一个输入框两件事——
+       ① 仍按原来的方式筛选当前这张表（f.q，160ms 防抖）；
+       ② 额外弹一个「全库结果」面板，同时给出零售 + 代理两侧的命中，
+          这样在零售商页搜代理商名字不会「什么都没搜到」。 */
     const q = el('f-q');
     if (q) {
       let t;
-      q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { f.q = q.value; render(); }, 160); });
+      q.addEventListener('input', () => {
+        paintQres();
+        clearTimeout(t);
+        t = setTimeout(() => { f.q = q.value; render(); }, 160);
+      });
+      q.addEventListener('focus', paintQres);
+      q.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { hideQres(); return; }
+        if (e.key === 'Enter') {
+          const hits = qHits(q.value);
+          if (hits.length) { e.preventDefault(); goCustomer(hits[0].c); }
+        }
+      });
+      const qb = el('f-qres');
+      if (qb) {
+        qb.addEventListener('mousedown', (e) => e.preventDefault());   // 别让输入框先失焦
+        qb.addEventListener('click', (e) => {
+          const btn = e.target.closest ? e.target.closest('[data-qid]') : null;
+          if (!btn) return;
+          const c = APP.customers.find((x) => x.id === btn.getAttribute('data-qid'));
+          if (c) goCustomer(c);
+        });
+      }
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest || !e.target.closest('.search')) hideQres();
+      });
     }
     const rs = el('f-reset');
     if (rs) rs.addEventListener('click', () => {
       // 就地清空：bindSel 的闭包捕获的是这个对象，换新对象会让之后所有下拉失效
       Object.assign(f, { q: '', region: 'ALL', country: 'ALL', p: 'ALL', coop: 'ALL', contact: 'ALL', ind: 'ALL', level: 'ALL' });
       const qq = el('f-q'); if (qq) qq.value = '';
+      hideQres();
       ['f-region', 'f-country', 'f-p', 'f-coop', 'f-contact', 'f-ind', 'f-level'].forEach((id) => { const n = el(id); if (n) n.value = 'ALL'; });
       render();
     });
     $$('.tab').forEach((b) => b.addEventListener('click', () => {
+      hideQres();
       state.view = b.dataset.view;
       // 带 t= 记住客户类型，刷新/分享链接后不丢
       location.hash = '#t=' + PROFILE + '&v=' + state.view;
@@ -5195,6 +5331,12 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     if (scrim) scrim.addEventListener('click', closeDrawer);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
     render();
+    // 从另一侧的搜索结果跳过来：视图渲染完再开抽屉（抽屉是独立 DOM，不依赖当前视图）
+    if (state.pendingOpen) {
+      const pid = state.pendingOpen;
+      state.pendingOpen = '';
+      if (APP.customers.some((x) => x.id === pid)) openDrawer(pid);
+    }
   }
 
   /* 优先级 / 体量的行内与抽屉编辑：change（下拉选定、输入框失焦）即保存。

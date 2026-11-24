@@ -727,7 +727,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     <div class="brandmark">OB</div>
     <div class="titles">
       <h1>全球渠道总看板</h1>
-      <div class="sub">零售商 117 + 代理集成商 689（含新增名单 58 / 622）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-24 14:34<span id="sub-extra"></span></div>
+      <div class="sub">零售商 117 + 代理集成商 689（含新增名单 58 / 622）· P1–P3 · 体量统一美元口径 · 总部地图为全球视图 · 构建于 2026-11-24 16:41<span id="sub-extra"></span></div>
     </div>
     <div class="topbar-right">
       <span class="pill gray"><span class="dot"></span>数据源：渠道客户整理 + 全球新增名单</span>
@@ -2268,9 +2268,14 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const xs = EXTRA();
     if (!xs.length) return;
     const m = {};
-    xs.forEach((x) => { m[x.ctype + '|' + nkey(x.name)] = x; });
+    const mName = {};
+    xs.forEach((x) => {
+      m[x.ctype + '|' + nkey(x.name)] = x;
+      // 客户在看板上被改了分类时 ctype 与实际所在的一侧不一致，按名字兜一层
+      if (x.name && !mName[nkey(x.name)]) mName[nkey(x.name)] = x;
+    });
     [APP.retailers, APP.agents].forEach((list) => list.forEach((c) => {
-      const x = m[c.type + '|' + nkey(c.name)];
+      const x = m[c.type + '|' + nkey(c.name)] || mName[nkey(c.name)];
       if (!x) return;
       c.entry = true;
       c.batch = 'new';
@@ -2340,6 +2345,115 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     list.forEach((c) => { c.fovr = bag[okey(c.name)] || null; });
   }
 
+  /* ============================================================
+     人工改分类：零售商 ↔ 代理集成商（看板上直接切）
+     ------------------------------------------------------------
+     意图存在 customer_overrides.fields 的保留键 __type 里。它不在任何一张表的
+     表头里，所以 applyFieldOverrides 不会把它当成原表列打到行上，只在这里被读。
+
+     为什么不能只改一个标签：两侧的列名、评分维度、渠道角色、推荐型号各是一套。
+     正确做法是把整行按列名差异搬过去，再走对面的 builder —— 相当于把
+     build_v5.py 的 apply_reclass() 搬到运行时来做，映射表也用同一份口径：
+       覆盖范围 ↔ 覆盖区域 ｜ 头部竞品品牌体量 ↔ 合作竞品 ｜ Webcam体量 ↔ 相关产品线体量
+     目标表没有的列（门店数量 / 是否在售 webcam / 主要品类…）搬不过去，写进「备注」留痕，
+     不丢信息；竞品体量两侧都能解析，所以 SKU 不会因为换表而归零。
+     ============================================================ */
+  const R2A = {
+    '覆盖区域': '覆盖范围',
+    '合作竞品': '头部竞品品牌体量',
+    '相关产品线体量（可推测/预估）': 'Webcam体量（可推测/预估）',
+  };
+  const A2R = {
+    '覆盖范围': '覆盖区域',
+    '头部竞品品牌体量': '合作竞品',
+    'Webcam体量（可推测/预估）': '相关产品线体量（可推测/预估）',
+  };
+  let TYPE_MOVES = {};   // okey(客户名) → { from, to, by, at }，build 里填，抽屉里显示「人工调整」
+
+  function typeMoves() {
+    const m = {};
+    OVR().forEach((x) => {
+      if (!x || !x.id) return;
+      const f = parseFields(x.fields);
+      const t = f && f.__type;
+      if (t !== 'retailer' && t !== 'agent') return;
+      const nm = okey(x.customer || String(x.id).split('|')[1] || '');
+      if (!nm) return;
+      m[nm] = { to: t, by: x.updated_by || '', at: String(x.updated_at || '').slice(0, 16).replace('T', ' ') };
+    });
+    return m;
+  }
+
+  function rowName(sheet, row) {
+    const i = sheet.headers.indexOf('客户名');
+    return i < 0 ? '' : okey(row[i]);
+  }
+
+  /* 把一行的值按「目标表列名」重排。rec 用源表原文，保证目标表没有的列还能写进备注留痕。 */
+  function reclassRow(row, src, dst, to) {
+    const rec = {};
+    src.headers.forEach((h, i) => { if (h) rec[h] = row[i] == null ? null : row[i]; });
+    const mp = to === 'agent' ? R2A : A2R;
+    const out = dst.headers.map((h) => {
+      if (!h) return null;
+      if (mp[h] != null) return rec[mp[h]] == null ? null : rec[mp[h]];
+      return rec[h] == null ? null : rec[h];
+    });
+    const setIfEmpty = (h, v) => {
+      const i = dst.headers.indexOf(h);
+      if (i >= 0 && (out[i] == null || out[i] === '') && v != null && v !== '') out[i] = v;
+    };
+    if (to === 'agent') {
+      // 代理表按「合作竞品」解析竞品体量；零售表可能是「头部竞品品牌体量」或已删的「头部竞品品牌」
+      setIfEmpty('合作竞品', rec['头部竞品品牌体量'] || rec['头部竞品品牌']);
+      setIfEmpty('相关产品线体量（可推测/预估）', rec['Webcam体量（可推测/预估）']);
+      // 原来在零售表卖 webcam，搬到代理侧要让「是否代理直接竞品」说得通，否则直接竞品判定会掉
+      if (rec['头部竞品品牌体量'] || rec['头部竞品品牌']) setIfEmpty('是否代理直接竞品', '是');
+    } else {
+      setIfEmpty('头部竞品品牌体量', rec['合作竞品']);
+      setIfEmpty('头部竞品品牌', rec['合作竞品']);
+      setIfEmpty('Webcam体量（可推测/预估）', rec['相关产品线体量（可推测/预估）']);
+      if (rec['是否在售webcam']) setIfEmpty('是否在售webcam', rec['是否在售webcam']);
+    }
+    /* 目标表没有的列写进备注留痕。同一句只写一次，改来改去不会越叠越长。 */
+    const iNote = dst.headers.indexOf('备注');
+    if (iNote >= 0) {
+      const fromLabel = to === 'agent' ? '零售商表' : '代理集成商表';
+      const gone = to === 'agent'
+        ? ['是否有门店', '门店数量', '是否在售webcam']
+        : ['主要品类', '相关产品线', '是否代理直接竞品'];
+      const bits = [];
+      gone.forEach((h) => {
+        const v = rec[h];
+        if (v != null && String(v).trim() !== '') {
+          const s = h + '=' + String(v).trim();
+          bits.push(s.length > 40 ? s.slice(0, 40) + '…' : s);
+        }
+      });
+      const mark = '原属' + fromLabel + '（看板人工改分类）';
+      const old = String(out[iNote] == null ? '' : out[iNote]).trim();
+      if (old.indexOf(mark) < 0) {
+        const tail = [mark].concat(bits).join('；');
+        out[iNote] = old ? old + '｜' + tail : tail;
+      }
+    }
+    return out;
+  }
+
+  /* 把一侧的行分成「留在本侧」和「按人工指定搬去另一侧」两堆 */
+  function splitByType(rows, sheet, here, there, moves) {
+    const keep = [], move = [];
+    rows.forEach((r) => {
+      const nm = rowName(sheet, r);
+      const mv = nm ? moves[nm] : null;
+      if (mv && mv.to === there) {
+        TYPE_MOVES[nm] = { from: here, to: there, by: mv.by, at: mv.at };
+        move.push(r);
+      } else keep.push(r);
+    });
+    return { keep, move };
+  }
+
   /* 人工覆盖（看板上直接改的优先级 / 综合体量）。
      键与跟进记录同一套：`类型|去空白客户名`。
      - 空字符串 = 撤销这一项覆盖，回到源表值（不是「改成空」）；
@@ -2350,9 +2464,18 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const xs = OVR();
     if (!xs.length) return;
     const m = {};
-    xs.forEach((x) => { if (x && x.id) m[x.id] = x; });
+    const mName = {};
+    xs.forEach((x) => {
+      if (!x || !x.id) return;
+      m[x.id] = x;
+      /* 名字兜底：客户被人工改了分类后，覆盖行的 id 前缀可能还是旧类型
+         （网络失败没迁成、或别人还没拉到那次迁移）。按名字兜一层，
+         保证优先级 / 体量覆盖不会因为换表凭空消失。同名字多行取最新那条。 */
+      const nm = okey(x.customer || String(x.id).split('|')[1] || '');
+      if (nm && (!mName[nm] || String(x.updated_at || '') > String(mName[nm].updated_at || ''))) mName[nm] = x;
+    });
     [APP.retailers, APP.agents].forEach((list) => list.forEach((c) => {
-      const x = m[c.type + '|' + String(c.name).replace(/\s+/g, '')];
+      const x = m[c.type + '|' + String(c.name).replace(/\s+/g, '')] || mName[okey(c.name)];
       if (!x) return;
       const pv = String(x.p || '').toUpperCase().match(/P[123]/);
       if (pv) {
@@ -2389,14 +2512,32 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     const exR = EXTRA().filter((x) => x.ctype === 'retailer' && x.name).map((x) => extraRow('retailer', x));
     const exA = EXTRA().filter((x) => x.ctype === 'agent' && x.name).map((x) => extraRow('agent', x));
     FOVR_INFO = { retailer: {}, agent: {} };
-    const rowsR = applyFieldOverrides(exR.length ? S1.rows.concat(exR) : S1.rows, S1, 'retailer');
-    const rowsA = applyFieldOverrides(exA.length ? S2.rows.concat(exA) : S2.rows, S2, 'agent');
+    TYPE_MOVES = {};
+
+    /* 人工改分类：先按 __type 把行分流，再把要搬的行按目标表列名重排后追加到对面。
+       顺序保持「原表行在前、搬来的行和手工录入的在末尾」，这样没被改过的客户 id 不会变，
+       当前会话里的 #open= / 滚动位置都不受影响。 */
+    const moves = typeMoves();
+    const r1 = splitByType(S1.rows, S1, 'retailer', 'agent', moves);
+    const a1 = splitByType(S2.rows, S2, 'agent', 'retailer', moves);
+    const e1 = splitByType(exR, S1, 'retailer', 'agent', moves);
+    const e2 = splitByType(exA, S2, 'agent', 'retailer', moves);
+    const toA = r1.move.concat(e1.move).map((r) => reclassRow(r, S1, S2, 'agent'));
+    const toR = a1.move.concat(e2.move).map((r) => reclassRow(r, S2, S1, 'retailer'));
+
+    const rowsR = applyFieldOverrides(r1.keep.concat(e1.keep, toR), S1, 'retailer');
+    const rowsA = applyFieldOverrides(a1.keep.concat(e2.keep, toA), S2, 'agent');
     APP.retailers = rowsR.map((r, i) => markIndustry(markLead(buildRetailer(r, i), 'retailer', i), 'retailer')).filter((c) => c.name);
     APP.agents = rowsA.map((r, i) => markIndustry(markLead(buildAgent(r, i), 'agent', i), 'agent')).filter((c) => c.name);
     markEntries();
     attachFieldOvr(APP.retailers, 'retailer');
     attachFieldOvr(APP.agents, 'agent');
     applyOverrides();
+    /* 挂「分类人工调整」标记：抽屉据此显示原分类、谁在什么时候改的，
+       并提供「恢复原分类」。只对真被搬过的那批客户挂。 */
+    [APP.retailers, APP.agents].forEach((list) => list.forEach((c) => {
+      c.typeOvr = TYPE_MOVES[okey(c.name)] || null;
+    }));
     APP.retailers.forEach((c) => { if (c.batch !== 'new') c.action = retailerAction(c); });
     APP.agents.forEach((c) => {
       if (c.batch === 'new') return;
@@ -3037,7 +3178,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   // 注意：attachHQ() 需在 APP.build() 之后调用，由 boot 脚本触发
 })();
 </script>
-<script>window.CLASSIFY_RULES = {"retailId":"brick-and-mortar retailer|retail chain|retail store|retail giant|retail brand|retail group|retailer|零售经销商|零售和电商|零售与电商|网络零售|零售巨头|零售门店|零售平台|零售企业|零售品牌|零售连锁|零售电商|连锁零售|零售卖场|零售集团|线上零售|零售商|零售店","store":"direct-to-consumer|amazon store|online store|online shop|marketplace|e-commerce|web store|ecommerce|shopify|webshop|目录销售|电子商务|在线商店|线上销售|线上商城|线上售卖|网上商店|网上销售|直播带货|网上商城|在线销售|在线商城|网络销售|to C|线上商店|toC|B2C|大卖场|专卖店|乐器店|专业店|DTC|体验店|连锁店|相机店|会员店|影音店|零售点|集合店|实体店|旗舰店|分店|商超|邮购|店铺|卖场|超市|电商|门店|百货|网店|商城|2C","channel":"service provider|system design|consultancy|distributor|wholesaler|integrator|consultant|installer|reseller|解决方案提供商|dealer|信息技术服务|技术系统设计|AV 设计|IT 服务|系统集成商|授权服务商|集成方案商|解决方案商|音视频设计|网站设计|维修中心|授权维修|现场活动|活动技术|软件服务|技术支持|活动制作|维修服务|网页设计|设计公司|工程咨询|售后服务|技术服务|托管服务|IT服务|声学设计|整体方案|工程公司|系统运维|软件开发|系统集成|供货商|安装商|工程商|进口商|代理商|维修商|租赁商|集成商|经销商|渠道商|销售商|批发商|方案商|承包商|分销商|VAR|服务商|转售商|总代理|贸易商|MSP|咨询|舞美|制片|租赁|分销|集成|安装|经销|总代|会展|顾问|维修|代理","project":"system design|consultancy|integrator|consultant|解决方案提供商|技术系统设计|AV 设计|系统集成商|集成方案商|解决方案商|音视频设计|现场活动|活动技术|活动制作|工程咨询|设计公司|声学设计|托管服务|整体方案|工程公司|系统运维|系统集成|工程商|集成商|方案商|VAR|MSP|咨询|舞美|顾问","enduser":"终端用户|终端客户|终端教育|终端医疗|终端演播室|终端使用方|大学|学院|学区|中学|高中|小学|学校|校区|球队|巡回赛|体育联盟|职业球|医院|医疗系统|医疗中心|医学院|诊所|市政府|市政|政府机构|公共机构|政府部门|教会|教堂|事工|教区|宗教|电视台|电台|广播网|广播机构|广播公司|广播电视|媒体集团|传媒集团|传媒|出版|杂志|媒体网络|媒体公司|新闻|测评|评测|导购|blog|博客|自媒体|工作室|制作公司|内容制作|影视制作|软件|平台|SaaS|广告科技|协会|信托|基金会|非营利|公益|博物馆|剧院|乐团|文化场馆|制造商|厂商|代工","weak":"零售|retail|售卖|销售|卖货"};</script>
+<script>window.CLASSIFY_RULES = {"retailId":"brick-and-mortar retailer|retail giant|retail chain|retail brand|retail group|retail store|retailer|零售和电商|零售经销商|零售与电商|零售品牌|零售集团|零售企业|零售电商|网络零售|零售平台|零售卖场|连锁零售|零售连锁|零售门店|零售巨头|线上零售|零售店|零售商","store":"direct-to-consumer|amazon store|online store|marketplace|online shop|e-commerce|web store|ecommerce|shopify|webshop|直播带货|网络销售|线上售卖|网上商店|在线商城|网上商城|线上商城|电子商务|线上商店|线上销售|在线销售|to C|目录销售|在线商店|网上销售|零售点|会员店|连锁店|相机店|旗舰店|集合店|体验店|大卖场|影音店|专卖店|DTC|B2C|乐器店|专业店|实体店|toC|网店|超市|门店|商超|邮购|电商|商城|分店|百货|店铺|2C|卖场","channel":"service provider|system design|consultancy|distributor|wholesaler|integrator|consultant|installer|reseller|解决方案提供商|信息技术服务|技术系统设计|dealer|解决方案商|授权服务商|AV 设计|IT 服务|集成方案商|系统集成商|音视频设计|售后服务|工程咨询|工程公司|维修服务|托管服务|维修中心|网页设计|IT服务|设计公司|声学设计|活动制作|网站设计|软件服务|系统运维|软件开发|整体方案|授权维修|现场活动|活动技术|系统集成|技术支持|技术服务|批发商|总代理|销售商|集成商|代理商|服务商|渠道商|租赁商|安装商|承包商|维修商|供货商|VAR|经销商|分销商|进口商|工程商|转售商|方案商|MSP|贸易商|舞美|经销|顾问|安装|制片|分销|集成|代理|租赁|会展|总代|咨询|维修","project":"system design|consultancy|integrator|consultant|解决方案提供商|技术系统设计|解决方案商|AV 设计|集成方案商|系统集成商|音视频设计|工程咨询|工程公司|托管服务|设计公司|声学设计|活动制作|系统运维|整体方案|现场活动|活动技术|系统集成|集成商|VAR|工程商|方案商|MSP|舞美|顾问|咨询","enduser":"终端用户|终端客户|终端教育|终端医疗|终端演播室|终端使用方|大学|学院|学区|中学|高中|小学|学校|校区|球队|巡回赛|体育联盟|职业球|医院|医疗系统|医疗中心|医学院|诊所|市政府|市政|政府机构|公共机构|政府部门|教会|教堂|事工|教区|宗教|电视台|电台|广播网|广播机构|广播公司|广播电视|媒体集团|传媒集团|传媒|出版|杂志|媒体网络|媒体公司|新闻|测评|评测|导购|blog|博客|自媒体|工作室|制作公司|内容制作|影视制作|软件|平台|SaaS|广告科技|协会|信托|基金会|非营利|公益|博物馆|剧院|乐团|文化场馆|制造商|厂商|代工","weak":"零售|retail|售卖|销售|卖货"};</script>
 <script>window.__SITE__ = [{"n":"EC Pro Video Systems Inc","v":"service","s":4,"g":["电商平台","加购/结账","标价","商品导航","项目/服务话术"],"u":"https://ecprostore.com"},{"n":"vip production nw","v":"service","s":1,"g":["加购/结账","商品导航","项目/服务话术"],"u":"https://www.vipproductionnw.com"},{"n":"Camera Corner Connecting Point","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://www.cccp.com"},{"n":"Ziestech Distributors","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://www.ziestech.com"},{"n":"Lorne Lapham Sales & Rentals","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://llsr.com"},{"n":"BJ Photo Labs","v":"retail","s":3,"g":["加购/结账","标价","商品导航"],"u":"https://www.bjphoto.net"},{"n":"Logesco","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://logesco.com"},{"n":"MelroseMAC","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://melrosemac.com"},{"n":"Resolution AV NYC","v":"retail","s":5,"g":["电商平台","加购/结账","标价","商品导航"],"u":"https://resolutionavnyc.com"},{"n":"The Penn Group","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://thepenn.group"},{"n":"Midwest Audio Visual","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://midwestaudiovisual.com"},{"n":"East West Associates LLC","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://www.eastwestassociatesllc.com"},{"n":"CCI Solutions","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://ccisolutions.com"},{"n":"Agility AV","v":"service","s":0,"g":["加购/结账","项目/服务话术"],"u":"https://www.agilityavl.com"},{"n":"VideoLink","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://videolink.com"},{"n":"MeyerPro","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://meyerproinc.com"},{"n":"SC Media Canada","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://www.scmediacanada.com"},{"n":"Professional commercial AV solutions service","v":"service","s":-1,"g":["项目/服务话术"],"u":"https://www.esikc.com"},{"n":"Soundbox Productions","v":"service","s":2,"g":["电商平台","加购/结账","项目/服务话术"],"u":"https://soundboxpro.com"},{"n":"TelQuest International","v":"service","s":3,"g":["电商平台","加购/结账","商品导航","项目/服务话术"],"u":"https://www.telquestintl.com"},{"n":"epic rise electronics","v":"retail","s":4,"g":["电商平台","加购/结账","商品导航"],"u":"https://epicriseelectronics.com"}];</script>
 <script>/* ============================================================
    classify.js — 客户身份判定（前端）
@@ -4034,6 +4175,17 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
   const ovrOf = (c) => OVR_ROWS.filter((x) => x && x.id === ovrKey(c))[0] || null;
   const canOvr = () => !!(W.SYNC && W.SYNC.enabled && W.SYNC.saveOvr);
 
+  /* hash 里带了 open=的客户，首屏可能还不在列表里 —— 云端覆盖表是异步拉回来的，
+     而「客户被判到哪一侧」正是覆盖表决定的。所以找不到时别急着把 pendingOpen 清掉，
+     等覆盖表到位、整表重建之后再试一次（改客户分类后的跳转就靠这个落到详情上）。 */
+  function tryPendingOpen() {
+    const pid = state.pendingOpen;
+    if (!pid) return;
+    if (!APP.customers.some((x) => x.id === pid)) return;
+    state.pendingOpen = '';
+    openDrawer(pid);
+  }
+
   function ovrRebuild() {
     // 记住当前视图表格的滚动位置：改完一格整表会重排，跳回顶部很难受
     const box = el('view-' + state.view);
@@ -4052,6 +4204,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       const again = box2 && box2.querySelector('[data-oid="' + fo + '"][data-of="' + ff + '"]');
       if (again) again.focus();
     }
+    tryPendingOpen();
   }
 
   function ovrApply(rows) {
@@ -4100,6 +4253,67 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       return true;
     }).catch((err) => {
       if (W.__toast) W.__toast('保存失败：' + ((err && (err.message || err.code)) || '网络或权限'));
+      return false;
+    });
+  }
+
+  /* ---------- 改客户分类（零售商 ↔ 代理集成商） ----------
+     意图写 customer_overrides.fields.__type，整条覆盖行的 id 跟着从「旧类型|客户名」
+     迁到「新类型|客户名」，否则优先级 / 体量 / 原表字段覆盖在切换后会全部失配。
+     迁完要重建：model 会把这一行按两张表的列名差异整行搬到对面，评分维度、
+     渠道角色、推荐型号全部按新分类重算 —— 不是换个标签而已。
+     重建后客户对象整批换新、id 也变了，所以按「名字」把新对象找回来再跳过去。 */
+  const TYPE_LABEL = { retailer: '零售商', agent: '代理 / 集成商' };
+  const canType = () => !!(W.SYNC && W.SYNC.enabled && W.SYNC.moveOvr);
+  function ovrSetType(c, to) {
+    if (!c || (to !== 'retailer' && to !== 'agent')) return Promise.resolve(false);
+    if (!canType()) {
+      if (W.__toast) W.__toast('本机模式不能保存，请用线上链接打开');
+      return Promise.resolve(false);
+    }
+    const origin = (c.typeOvr && c.typeOvr.from) || c.type;
+    if (to === c.type && to !== origin) return Promise.resolve(false);   // 没变
+    if (to === c.type && !c.typeOvr) return Promise.resolve(false);
+
+    const prev = ovrOf(c) || {};
+    const oldKey = ovrKey(c);
+    const newKey = to + '|' + String(c.name).replace(/\s+/g, '');
+    const fields = Object.assign({}, (prev.fields && typeof prev.fields === 'object') ? prev.fields : {});
+    if (to === origin) delete fields.__type;      // 回到原分类 = 撤销这条覆盖
+    else fields.__type = to;
+    const row = {
+      id: newKey, ctype: to, customer: c.name,
+      p: prev.p || '', scale_text: prev.scale_text || '',
+      fields: Object.keys(fields).length ? fields : null,
+      updated_by: (W.SYNC.who ? W.SYNC.who() : '') || '',
+      updated_at: new Date().toISOString(),
+    };
+    const hist = {
+      record_id: newKey, ctype: to, customer: c.name,
+      field: '客户分类', old_val: TYPE_LABEL[c.type] || c.type, new_val: TYPE_LABEL[to] || to,
+      by: row.updated_by || '—',
+    };
+    return Promise.resolve(W.SYNC.moveOvr(oldKey, row)).then(() => {
+      OVR_ROWS = OVR_ROWS.filter((x) => x.id !== oldKey && x.id !== newKey).concat([row]);
+      ovrLastKey = '';
+      /* 跟进记录的键也是「类型|客户名」，换表后会失联。pipe.js 的 adopt() 会在下次读到时
+         按同名认回来并把云端那一行搬过去；这里主动读一次，让它现在就迁好。 */
+      if (W.PIPE && W.PIPE.rec) { try { W.PIPE.rec({ type: to, name: c.name }); } catch (e) {} }
+      APP.build();
+      render();
+      if (W.SYNC.logHist) W.SYNC.logHist([hist]);
+      const nc = (to === 'retailer' ? APP.retailers : APP.agents).filter((x) => x.name === c.name)[0];
+      closeDrawer();
+      if (nc && nc.id) {
+        // 客户已经不在当前这一侧了：跳到它现在所在的那一侧并直接打开详情
+        location.hash = '#t=' + to + '&v=' + state.view + '&open=' + encodeURIComponent(nc.id);
+        location.reload();
+      } else if (W.__toast) {
+        W.__toast('已改为' + TYPE_LABEL[to]);
+      }
+      return true;
+    }).catch((err) => {
+      if (W.__toast) W.__toast('改分类失败：' + ((err && (err.message || err.code)) || '网络或权限'));
       return false;
     });
   }
@@ -4575,6 +4789,34 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
           : '本机模式（双击打开文件）不能保存，请用线上链接打开后再改'}</div>
       </div>`;
 
+    /* ---------- 客户分类（零售 ↔ 代理集成商） ----------
+       两侧的评分维度、渠道角色、推荐型号是两套口径，所以这是「整条搬表」而不是打个标签：
+       改完 model 会按列名差异把行搬到对面，竞品体量 / 优先级 / 原表字段覆盖都跟着走。
+       写的是 fields.__type，可随时「恢复原分类」撤销。 */
+    const typeOrigin = c.typeOvr ? c.typeOvr.from : c.type;
+    const typeOn = canType();
+    const typeSect = `
+      <div class="sect pipeedit typesect">
+        <h4>客户分类 <span class="mini muted">（零售商 ↔ 代理集成商 · 改动同步给所有人）</span></h4>
+        <div class="dfgrid">
+          <div class="dfld full">
+            <span class="lb"><span>当前分类</span><span class="tag">${c.typeOvr ? '人工调整' : '原表归属'}</span></span>
+            <select data-ttype="1"${typeOn ? '' : ' disabled'}>
+              <option value="retailer"${c.type === 'retailer' ? ' selected' : ''}>零售商</option>
+              <option value="agent"${c.type === 'agent' ? ' selected' : ''}>代理 / 集成商</option>
+            </select>
+            <div class="ovrsrc">${c.typeOvr
+              ? '原属 <b>' + esc(TYPE_LABEL[typeOrigin] || typeOrigin) + '</b>'
+                + (c.typeOvr.by ? ' · ' + esc(c.typeOvr.by) : '') + (c.typeOvr.at ? ' · ' + esc(c.typeOvr.at) : '')
+              : '按 Excel 里它所在的那张表判定'}</div>
+          </div>
+        </div>
+        <div class="dfmsg ovrbar">${typeOn
+          ? '<span class="dot"></span>切换后会整条搬到另一侧：评分、渠道角色、推荐型号按新分类重算，跟进记录一起搬过去'
+            + (c.typeOvr ? ' <button class="btn ghost sm" data-act="type-reset">恢复原分类</button>' : '')
+          : '本机模式（双击打开文件）不能保存，请用线上链接打开后再改'}</div>
+      </div>`;
+
     box.innerHTML = `
       <div class="drawer-h">
         <div class="top"><div>
@@ -4589,6 +4831,7 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       <div class="drawer-b">
         ${pipeSect}
         ${ovrSect}
+        ${typeSect}
         ${histSect}
         ${c.batch === 'new' && c.seg ? `<div class="sect"><h4>分类依据（按「一句话简介」判定）</h4>
           <div class="note" style="margin-bottom:6px"><b>${esc(c.seg)}</b>：${esc(c.segWhy || '')}</div>
@@ -4662,6 +4905,28 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
       if (c.pOvr) done.push(ovrSet(c, 'p', ''));
       if (c.scaleOvr) done.push(ovrSet(c, 'scale_text', ''));
       Promise.all(done).then(() => { if (W.__toast) W.__toast('已撤销覆盖，回到源表值'); });
+    }));
+    /* 客户分类：下拉一改就弹确认 —— 这是会同步给所有人的写操作，
+       而且列表里会当场少一行，误触的代价比多一次确认大。 */
+    $$('[data-ttype]', box).forEach((sel) => {
+      sel.addEventListener('change', (e) => {
+        e.stopPropagation();
+        if (!c) return;
+        const to = sel.value;
+        if (to === c.type) return;
+        const origin = (c.typeOvr && c.typeOvr.from) || c.type;
+        const back = to === origin;
+        const msg = back
+          ? '把「' + c.name + '」恢复成原来的分类（' + (TYPE_LABEL[origin] || origin) + '）？\n\n· 覆盖里的分类标记会被撤销\n· 它会搬回原来那一侧，评分按原口径重算'
+          : '把「' + c.name + '」从「' + (TYPE_LABEL[c.type] || c.type) + '」改成「' + (TYPE_LABEL[to] || to) + '」？\n\n· 客户会立刻移到另一侧，评分、渠道角色、推荐型号按新分类重算\n· 跟进记录、优先级、体量、竞品体量一起搬过去，不会丢\n· 改完会跳到那一侧直接打开它\n\n这一改动所有人都会看到，可随时「恢复原分类」撤销。';
+        if (!window.confirm(msg)) { sel.value = c.type; return; }
+        ovrSetType(c, to);
+      });
+    });
+    $$('[data-act="type-reset"]', box).forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!c || !c.typeOvr) return;
+      ovrSetType(c, c.typeOvr.from);
     }));
     bindDrawerEdits(box, c);
     /* 原表字段：失焦（文本框）或选中（下拉）即保存，不用点确认按钮 */
@@ -5367,15 +5632,13 @@ table.dt.pipe td:nth-child(4) select{padding-right:2px}
     if (scrim) scrim.addEventListener('click', closeDrawer);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
     render();
-    // 表格已经出来了，撤掉首屏那个「正在装载」占位
+    // 从另一侧的搜索结果 / 改分类后的跳转过来：视图渲染完再开抽屉
+    // （云端覆盖表还没到时先留着，等 ovrRebuild 再试，见 tryPendingOpen）
+    tryPendingOpen();
+
+    /* 首屏那批视图已经画完了，撤掉「正在装载」占位 */
     const bl = el('bootload');
     if (bl && bl.parentNode) bl.parentNode.removeChild(bl);
-    // 从另一侧的搜索结果跳过来：视图渲染完再开抽屉（抽屉是独立 DOM，不依赖当前视图）
-    if (state.pendingOpen) {
-      const pid = state.pendingOpen;
-      state.pendingOpen = '';
-      if (APP.customers.some((x) => x.id === pid)) openDrawer(pid);
-    }
   }
 
   /* 优先级 / 体量的行内与抽屉编辑：change（下拉选定、输入框失焦）即保存。
@@ -8301,6 +8564,7 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
       savePipe() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
       saveOvr() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
       saveOvrBulk() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
+      moveOvr() { return Promise.reject(new Error('本机模式（' + REASON + '）不能写云端')); },
       logHist() { return Promise.resolve(); },
       hist() { return Promise.resolve({ data: [], missing: true }); },
       issue: () => '',
@@ -8553,6 +8817,33 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     return true;
   }
 
+  /* 客户被人工改了分类（零售 ↔ 代理）后，customer_overrides 那一行的 id 也要跟着走 ——
+     它的主键就是「类型|去空白客户名」。不迁的话，优先级 / 体量 / 原表字段覆盖在切换后会全部失配：
+     model.js 里有按名字兜底，但那是「读」的兜底，救不了「写」——之后改一格会另起一行，
+     云端留下两行互相打架的记录。
+     顺序刻意是「先写新行、再删旧行」：中途失败最多留一行冗余，绝不会把唯一的记录删掉。 */
+  async function moveOvr(oldId, newRow) {
+    if (!ready || !cloud) throw new Error('云端还没连上，稍等两秒再试');
+    if (!newRow || !newRow.id) return false;
+    const body = cleanOvr(newRow);
+    if (fieldsColMissing && body.fields) {
+      throw new Error('云端 customer_overrides 还没有 fields 列，先在 Supabase SQL Editor 跑一次 outputs/supabase_schema.sql');
+    }
+    const r1 = await cloud.database.from(OVR_TABLE).upsert(body, { onConflict: 'id' });
+    if (r1.error) {
+      if (isNoFieldsCol(r1.error)) {
+        fieldsColMissing = true;
+        throw new Error('云端 customer_overrides 还没有 fields 列（原表字段覆盖用），先在 Supabase SQL Editor 跑一次 outputs/supabase_schema.sql；其余字段不受影响');
+      }
+      throw r1.error;
+    }
+    if (oldId && oldId !== newRow.id) {
+      // 删旧行失败不致命：读取有按名字兜底，且下次保存会再试；这里不打断用户操作
+      try { await cloud.database.from(OVR_TABLE).delete().eq('id', oldId); } catch (e) { /* 留一行冗余，下轮再清 */ }
+    }
+    return true;
+  }
+
   async function saveOvrBulk(rows) {
     if (!ready || !cloud) throw new Error('云端还没连上，稍等两秒再保存');
     for (let i = 0; i < rows.length; i += 80) {
@@ -8787,6 +9078,7 @@ ${l.stack}`)}else c=o?.stack??"";let f=this.url.toString().length;return o?.name
     savePipe,
     saveOvr,
     saveOvrBulk,
+    moveOvr,
     logHist,
     hist: histOf,
     issue: () => [

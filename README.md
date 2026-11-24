@@ -665,7 +665,7 @@ cd deploy && git add -A && git commit -m "update dashboard" && git push
 
 GitHub Pages 的站点源配置在仓库 **Settings → Pages**（Source: `main` 分支的 `/docs` 目录），一般不需要再动。
 
-## 性能：为什么以前越更新越卡（2026-11-25 已修）
+## 性能：为什么以前越更新越卡（2026-11-24 已修）
 
 看板是**单文件离线 HTML**，所有数据、脚本、GeoJSON 都内联在同一个文件里，每次打开都要整份下载 + 解析。客户数从 700 涨到 806 之后，有两处写法把成本放大了，已经改掉：
 
